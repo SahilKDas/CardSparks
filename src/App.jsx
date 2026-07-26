@@ -1,19 +1,234 @@
-export default function App() {
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ArrowRight, BarChart3, CalendarDays, Check, ChevronRight, CloudRain,
+  Coffee, Compass, History, Lightbulb, LoaderCircle, MapPin, Menu,
+  Plus, RefreshCw, Settings, Sparkles, Sun, TrendingUp, Upload, X,
+} from 'lucide-react'
+import {
+  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts'
+
+const API = import.meta.env.VITE_API_URL || ''
+
+const seedSales = [
+  { date: '2026-07-13', amount: 1180 }, { date: '2026-07-14', amount: 1260 },
+  { date: '2026-07-15', amount: 1135 }, { date: '2026-07-16', amount: 1320 },
+  { date: '2026-07-17', amount: 1580 }, { date: '2026-07-18', amount: 1810 },
+  { date: '2026-07-19', amount: 1475 }, { date: '2026-07-20', amount: 1210 },
+  { date: '2026-07-21', amount: 1295 }, { date: '2026-07-22', amount: 1370 },
+  { date: '2026-07-23', amount: 1415 }, { date: '2026-07-24', amount: 1680 },
+  { date: '2026-07-25', amount: 1940 }, { date: '2026-07-26', amount: 1525 },
+]
+
+const demoProfile = {
+  name: 'Juniper Coffee Co.', type: 'Independent coffee shop', location: 'Portland, OR',
+  goal: 'Grow weekday foot traffic', sales: seedSales,
+}
+
+const fallbackBriefing = {
+  generated_at: new Date().toISOString(),
+  live_weather: false,
+  weather: {
+    current_temp: 68, condition: 'Partly cloudy', high: 74, low: 57,
+    precipitation: 20, forecast: [
+      { day: 'Today', high: 74, low: 57, code: 2, rain: 20 },
+      { day: 'Mon', high: 71, low: 56, code: 61, rain: 65 },
+      { day: 'Tue', high: 76, low: 58, code: 1, rain: 10 },
+    ],
+  },
+  events_source: 'Curated demo events',
+  events: [
+    { name: 'Waterfront Blues Festival', date: 'Fri, Jul 31', time: '4:00 PM', distance: '0.8 mi', category: 'Festival', opportunity: 'high' },
+    { name: 'First Thursday Art Walk', date: 'Thu, Jul 30', time: '5:00 PM', distance: '0.5 mi', category: 'Community', opportunity: 'medium' },
+    { name: 'Portland Timbers Match', date: 'Sat, Aug 1', time: '7:30 PM', distance: '1.4 mi', category: 'Sports', opportunity: 'high' },
+  ],
+  sales: seedSales,
+  sales_summary: { total: 20195, average: 1443, trend_percent: 12.4, best_day: 'Saturday' },
+  advisor_mode: 'demo',
+  recommendations: [
+    { id: 'event-rush', priority: 'Today’s best move', icon: 'event', title: 'Turn Friday’s festival crowd into regulars', action: 'Prep 25% more cold brew and pastries by Friday afternoon. Put a “festival fuel” sidewalk bundle at $9 and include a bounce-back card for Monday.', why: 'Waterfront festival · 0.8 mi away · Fridays already run 18% above average', signals: ['event', 'sales'], impact: 'High upside' },
+    { id: 'rainy-monday', priority: 'Plan ahead', icon: 'rain', title: 'Make rainy Monday feel intentional', action: 'Schedule a 7–10 AM “Rainy Day Double Points” message Sunday night. Keep two extra baristas on the morning shift, then taper after lunch.', why: '65% chance of rain Monday · Mondays are your softest sales day', signals: ['weather', 'sales'], impact: 'Protects a slow day' },
+    { id: 'art-walk', priority: 'Easy win', icon: 'spark', title: 'Own the pre–Art Walk hour', action: 'Extend Thursday’s closing time to 8 PM and feature a grab-and-go iced latte flight from 4:30 PM. Place signage facing the gallery route.', why: 'Art Walk starts at 5 PM · 0.5 mi away · warm, dry forecast', signals: ['event', 'weather'], impact: 'Low effort' },
+  ],
+}
+
+function App() {
+  const [profile, setProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sidekick-profile')) } catch { return null }
+  })
+  const [briefing, setBriefing] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [view, setView] = useState('dashboard')
+  const [mobileNav, setMobileNav] = useState(false)
+
+  async function loadBriefing(nextProfile = profile, refresh = false) {
+    if (!nextProfile) return
+    setLoading(true)
+    try {
+      const response = await fetch(`${API}/api/briefing`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...nextProfile, refresh }),
+      })
+      if (!response.ok) throw new Error('Briefing unavailable')
+      setBriefing(await response.json())
+    } catch {
+      setBriefing({ ...fallbackBriefing, sales: nextProfile.sales || seedSales })
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { if (profile) loadBriefing(profile) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function finishOnboarding(nextProfile) {
+    setProfile(nextProfile)
+    localStorage.setItem('sidekick-profile', JSON.stringify(nextProfile))
+    setView('dashboard')
+    loadBriefing(nextProfile)
+  }
+
+  function reset() {
+    localStorage.removeItem('sidekick-profile')
+    setProfile(null); setBriefing(null); setView('dashboard')
+  }
+
+  if (!profile) return <Onboarding onFinish={finishOnboarding} />
+
   return (
-    <main className="shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Sidekick AI home">
-          <span className="brand-mark">S</span>
-          <span>Sidekick <strong>AI</strong></span>
-        </a>
-        <span className="status"><i /> Ready to help</span>
-      </header>
-      <section className="hero">
-        <p className="eyebrow">Your business co-pilot</p>
-        <h1>Good morning.<br /><em>What’s our next move?</em></h1>
-        <p>Sidekick connects the dots between your sales, the weather, and what’s happening nearby.</p>
-      </section>
-    </main>
+    <div className="app-shell">
+      <Sidebar profile={profile} view={view} setView={setView} reset={reset} open={mobileNav} close={() => setMobileNav(false)} />
+      <main className="main-content">
+        <MobileHeader profile={profile} open={() => setMobileNav(true)} />
+        {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} />}
+        {view === 'history' && <HistoryView />}
+        {view === 'settings' && <SettingsView profile={profile} reset={reset} />}
+      </main>
+    </div>
   )
 }
 
+function Onboarding({ onFinish }) {
+  const [step, setStep] = useState(1)
+  const [profile, setProfile] = useState({ name: '', type: 'Independent coffee shop', location: '', goal: 'Grow weekday foot traffic' })
+  const [sales, setSales] = useState([])
+  const [rows, setRows] = useState([{ date: '', amount: '' }, { date: '', amount: '' }, { date: '', amount: '' }])
+  const [error, setError] = useState('')
+
+  function update(key, value) { setProfile((current) => ({ ...current, [key]: value })) }
+  function next() {
+    if (!profile.name.trim() || !profile.location.trim()) { setError('Add your business name and location to continue.'); return }
+    setError(''); setStep(2)
+  }
+  function parseCsv(file) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const lines = String(reader.result).trim().split(/\r?\n/)
+        const parsed = lines.slice(1).map((line) => {
+          const [date, amount] = line.split(',').map((value) => value.trim().replace(/^"|"$/g, ''))
+          return { date, amount: Number(amount.replace(/[$,]/g, '')) }
+        }).filter((row) => row.date && Number.isFinite(row.amount))
+        if (!parsed.length) throw new Error()
+        setSales(parsed); setError('')
+      } catch { setError('We could not read that file. Use columns named date and amount.') }
+    }
+    reader.readAsText(file)
+  }
+  function finish() {
+    const manual = rows.map((row) => ({ date: row.date, amount: Number(row.amount) })).filter((row) => row.date && row.amount > 0)
+    const finalSales = sales.length ? sales : manual
+    if (finalSales.length < 3) { setError('Add at least three days of sales, or use the ready-made demo.'); return }
+    onFinish({ ...profile, sales: finalSales })
+  }
+
+  return (
+    <div className="onboarding">
+      <header className="onboarding-nav">
+        <Logo />
+        <button className="text-button" onClick={() => onFinish(demoProfile)}>Skip to demo <ArrowRight size={15} /></button>
+      </header>
+      <div className="onboarding-grid">
+        <section className="onboarding-story">
+          <div className="story-orbit"><span><Sparkles /></span><i className="orbit-dot weather-dot"><CloudRain /></i><i className="orbit-dot event-dot"><CalendarDays /></i><i className="orbit-dot sales-dot"><BarChart3 /></i></div>
+          <p className="eyebrow">Meet your new sidekick</p>
+          <h1>Make every day a<br /><em>better business day.</em></h1>
+          <p>One clear morning briefing, shaped by what you sold, what the sky is doing, and who’s coming to town.</p>
+          <div className="trust-row"><span><Check /> No credit card</span><span><Check /> Your data stays yours</span></div>
+        </section>
+        <section className="setup-card">
+          <div className="steps"><span className={step >= 1 ? 'active' : ''}>1</span><i /><span className={step >= 2 ? 'active' : ''}>2</span></div>
+          {step === 1 ? (
+            <>
+              <p className="eyebrow">Step 1 of 2</p><h2>Tell me about your business</h2><p className="muted">A little context makes every recommendation more useful.</p>
+              <label>Business name<input value={profile.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. Juniper Coffee Co." /></label>
+              <label>What kind of business?<select value={profile.type} onChange={(e) => update('type', e.target.value)}><option>Independent coffee shop</option><option>Neighborhood restaurant</option><option>Retail boutique</option><option>Bakery</option><option>Salon or spa</option><option>Other small business</option></select></label>
+              <label>City or ZIP code<div className="input-icon"><MapPin /><input value={profile.location} onChange={(e) => update('location', e.target.value)} placeholder="Portland, OR" /></div></label>
+              <label>Your focus<select value={profile.goal} onChange={(e) => update('goal', e.target.value)}><option>Grow weekday foot traffic</option><option>Plan inventory more accurately</option><option>Increase average order value</option><option>Build customer loyalty</option></select></label>
+              {error && <p className="form-error">{error}</p>}
+              <button className="primary-button full" onClick={next}>Next: add sales <ArrowRight size={17} /></button>
+              <button className="demo-button" onClick={() => onFinish(demoProfile)}><Coffee /> <span><strong>See the coffee shop demo</strong><small>Preloaded and ready in one click</small></span><ChevronRight /></button>
+            </>
+          ) : (
+            <>
+              <button className="back-button" onClick={() => setStep(1)}>← Back</button>
+              <p className="eyebrow">Step 2 of 2</p><h2>Add recent sales</h2><p className="muted">Two weeks is ideal, but three days is enough to begin.</p>
+              <label className="upload-zone"><Upload /><strong>Drop a CSV here or click to browse</strong><small>Two columns: date, amount</small><input type="file" accept=".csv,text/csv" onChange={(e) => e.target.files[0] && parseCsv(e.target.files[0])} /></label>
+              {sales.length > 0 && <div className="upload-success"><Check /> {sales.length} sales days ready</div>}
+              <div className="or"><span>or enter a few days</span></div>
+              <div className="sales-rows">{rows.map((row, index) => <div key={index}><input aria-label={`Date ${index + 1}`} type="date" value={row.date} onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, date: e.target.value } : item))} /><div className="money-input"><span>$</span><input aria-label={`Sales amount ${index + 1}`} type="number" placeholder="0.00" value={row.amount} onChange={(e) => setRows(rows.map((item, i) => i === index ? { ...item, amount: e.target.value } : item))} /></div></div>)}</div>
+              <button className="add-row" onClick={() => setRows([...rows, { date: '', amount: '' }])}><Plus /> Add another day</button>
+              {error && <p className="form-error">{error}</p>}
+              <button className="primary-button full" onClick={finish}>Build my first briefing <Sparkles size={17} /></button>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function Logo() { return <a className="brand" href="/"><span className="brand-mark">S</span><span>Sidekick <strong>AI</strong></span></a> }
+
+function Sidebar({ profile, view, setView, reset, open, close }) {
+  const items = [{ id: 'dashboard', label: 'Morning briefing', icon: Compass }, { id: 'history', label: 'Past advice', icon: History }, { id: 'settings', label: 'Business profile', icon: Settings }]
+  return <><aside className={`sidebar ${open ? 'open' : ''}`}><div className="side-top"><Logo /><button className="close-nav" onClick={close}><X /></button></div><nav>{items.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); close() }}><Icon /> {label}</button>)}</nav><div className="side-note"><Sparkles /><strong>Your sidekick is learning</strong><p>Each sales day makes tomorrow’s advice sharper.</p></div><button className="profile-chip" onClick={() => { setView('settings'); close() }}><span>{profile.name.charAt(0)}</span><div><strong>{profile.name}</strong><small>{profile.location}</small></div><ChevronRight /></button></aside>{open && <button className="nav-scrim" onClick={close} aria-label="Close navigation" />}</>
+}
+
+function MobileHeader({ profile, open }) { return <header className="mobile-header"><button onClick={open}><Menu /></button><Logo /><span className="mini-avatar">{profile.name.charAt(0)}</span></header> }
+
+function Dashboard({ profile, data, loading, refresh }) {
+  const today = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
+  return <div className="dashboard"><header className="page-header"><div><p className="eyebrow">{today}</p><h1>Good morning, {profile.name.split(' ')[0]}.</h1><p>Here’s what your business world looks like today.</p></div><button className="refresh-button" onClick={refresh} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />} Refresh briefing</button></header>
+    {loading && !data ? <BriefingSkeleton /> : <>
+      <section className="daily-glance"><div className="glance-label"><span>Today</span><strong>At a glance</strong></div><div className="glance-stat weather"><Sun /><div><strong>{Math.round(data.weather.current_temp)}°</strong><small>{data.weather.condition}</small></div></div><div className="glance-stat"><CalendarDays /><div><strong>{data.events.length}</strong><small>nearby events</small></div></div><div className="glance-stat"><TrendingUp /><div><strong>{data.sales_summary.trend_percent > 0 ? '+' : ''}{data.sales_summary.trend_percent}%</strong><small>7-day trend</small></div></div><span className={`live-pill ${data.live_weather ? '' : 'demo'}`}><i />{data.live_weather ? 'Weather live' : 'Demo weather'}</span></section>
+      <section className="advisor-section"><div className="section-heading"><div><span className="section-icon"><Sparkles /></span><div><p className="eyebrow">Your sidekick says</p><h2>Three moves worth making</h2></div></div><span className="ai-mode">{data.advisor_mode === 'claude' ? 'Powered by Claude' : 'Explainable demo advisor'}</span></div><div className="recommendation-grid">{data.recommendations.map((recommendation, index) => <Recommendation key={recommendation.id || index} item={recommendation} index={index} />)}</div></section>
+      <section className="signals-section"><div className="section-heading simple"><div><p className="eyebrow">The signals</p><h2>What your sidekick is watching</h2></div></div><div className="signal-grid"><SalesPanel sales={data.sales} summary={data.sales_summary} /><WeatherPanel weather={data.weather} live={data.live_weather} /><EventsPanel events={data.events} source={data.events_source} /></div></section>
+      <footer className="dashboard-footer"><span><Sparkles /> Briefing prepared for {profile.name}</span><span>Sales × weather × local events</span></footer>
+    </>}
+  </div>
+}
+
+function Recommendation({ item, index }) {
+  const icons = { rain: CloudRain, event: CalendarDays, spark: Lightbulb }
+  const Icon = icons[item.icon] || Lightbulb
+  return <article className={`recommendation-card rec-${index}`}><div className="rec-top"><span className="rec-icon"><Icon /></span><span className="priority">{item.priority}</span><span className="impact">{item.impact}</span></div><h3>{item.title}</h3><p className="action">{item.action}</p><div className="why"><strong>Why this?</strong><span>{item.why}</span></div><div className="signal-tags">{item.signals?.map((signal) => <span key={signal}>{signal === 'sales' ? <BarChart3 /> : signal === 'weather' ? <CloudRain /> : <CalendarDays />}{signal}</span>)}</div></article>
+}
+
+function SalesPanel({ sales, summary }) {
+  const chart = sales.slice(-10).map((row) => ({ ...row, label: new Date(`${row.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }) }))
+  return <article className="signal-card sales-panel"><div className="card-title"><span className="green-icon"><BarChart3 /></span><div><h3>Sales pulse</h3><p>Last {chart.length} days</p></div><span className="trend-badge"><TrendingUp /> {summary.trend_percent}%</span></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 10, right: 4, left: -18, bottom: 0 }}><defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e26143" stopOpacity={0.34}/><stop offset="100%" stopColor="#e26143" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9e6dd"/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#83908c', fontSize: 11 }}/><YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `$${v / 1000}k`} tick={{ fill: '#83908c', fontSize: 10 }}/><Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Sales']} contentStyle={{ borderRadius: 12, border: '1px solid #ddd8cc' }}/><Area type="monotone" dataKey="amount" stroke="#df6245" strokeWidth={3} fill="url(#salesFill)" /></AreaChart></ResponsiveContainer></div><div className="sales-stats"><div><small>Daily average</small><strong>${summary.average.toLocaleString()}</strong></div><div><small>Best day</small><strong>{summary.best_day}</strong></div></div></article>
+}
+
+function WeatherPanel({ weather, live }) {
+  return <article className="signal-card weather-panel"><div className="card-title"><span className="blue-icon"><Sun /></span><div><h3>Weather ahead</h3><p>{live ? 'Live forecast' : 'Demo forecast'}</p></div></div><div className="current-weather"><div><span>{Math.round(weather.current_temp)}°</span><p>{weather.condition}</p></div><Sun /></div><div className="forecast-list">{weather.forecast.slice(0, 3).map((day) => <div key={day.day}><span>{day.day}</span>{day.rain >= 40 ? <CloudRain /> : <Sun />}<strong>{Math.round(day.high)}°</strong><small>{day.rain}% rain</small></div>)}</div></article>
+}
+
+function EventsPanel({ events, source }) {
+  return <article className="signal-card events-panel"><div className="card-title"><span className="gold-icon"><CalendarDays /></span><div><h3>Nearby energy</h3><p>Next 7 days</p></div><span className="count-badge">{events.length}</span></div><div className="event-list">{events.slice(0, 3).map((event, i) => <div className="event-row" key={`${event.name}-${i}`}><div className="date-tile"><strong>{event.date.split(',')[0]}</strong><small>{event.date.split(',')[1] || ''}</small></div><div><strong>{event.name}</strong><small>{event.time} · {event.distance}</small></div><span className={`opportunity ${event.opportunity}`}>{event.opportunity}</span></div>)}</div><p className="source-note">Source: {source}</p></article>
+}
+
+function BriefingSkeleton() { return <div className="skeleton"><LoaderCircle className="spin" /><h2>Connecting the dots…</h2><p>Reading sales, weather, and what’s happening nearby.</p></div> }
+
+function HistoryView() { return <div className="simple-page"><p className="eyebrow">Past advice</p><h1>Your sidekick’s notebook</h1><p>Recommendations you generate are saved here, so you can return to the moves that worked.</p><div className="empty-state"><History /><h2>Your first briefing is today</h2><p>Refresh the morning briefing tomorrow to start building your history.</p></div></div> }
+
+function SettingsView({ profile, reset }) { return <div className="simple-page"><p className="eyebrow">Business profile</p><h1>{profile.name}</h1><p>The context your sidekick uses to tailor every recommendation.</p><div className="settings-card"><div><small>Business type</small><strong>{profile.type}</strong></div><div><small>Location</small><strong>{profile.location}</strong></div><div><small>Current focus</small><strong>{profile.goal}</strong></div><div><small>Sales days connected</small><strong>{profile.sales.length} days</strong></div><button className="secondary-button" onClick={reset}>Start over with another business</button></div></div> }
+
+export default App
