@@ -42,6 +42,17 @@ class SidekickTests(unittest.TestCase):
     def local_advisor(self, profile, summary, weather, events, outcomes):
         return sidekick.fallback_recommendations(profile, summary, weather, events, outcomes), "local"
 
+    def create_planned_action(self):
+        sidekick.store().save_profile(PROFILE)
+        recommendation = sidekick.fallback_recommendations(
+            PROFILE, sidekick.summarize_sales(SALES), sidekick.fallback_weather(),
+            sidekick.curated_demo_events("Portland"), [],
+        )[0]
+        return sidekick.store().create_action({
+            "profile_name": PROFILE["name"], "recommendation": recommendation,
+            "scheduled_for": "2026-07-20",
+        })
+
     def configure_signal_mocks(self, mock_geocode, mock_weather, mock_events, mock_advisor) -> None:
         mock_geocode.return_value = {"latitude": 1, "longitude": 2, "city": "Portland", "country_code": "US", "live": True}
         mock_weather.return_value = sidekick.fallback_weather()
@@ -97,10 +108,16 @@ class SidekickTests(unittest.TestCase):
     def test_demo_reset_is_idempotent_and_contains_a_win(self, mock_geocode, mock_weather, mock_events, mock_advisor) -> None:
         self.configure_signal_mocks(mock_geocode, mock_weather, mock_events, mock_advisor)
         first = sidekick.reset_demo_story()
+        old_action_id = first["seeded_action"]["id"]
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            sidekick.generate_launch_kit(old_action_id)
         second = sidekick.reset_demo_story()
         actions = sidekick.store().list_actions("Juniper Coffee Co.")
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0]["outcome"]["lift_amount"], 210)
+        self.assertFalse(actions[0]["has_launch_kit"])
+        with self.assertRaises(ValueError):
+            sidekick.store().get_launch_kit(old_action_id)
         self.assertTrue(first["demo_data"] and second["demo_data"])
         self.assertEqual(second["briefing"]["learning_count"], 1)
         self.assertIn("$210", second["briefing"]["recommendations"][2]["title"])
@@ -122,6 +139,87 @@ class SidekickTests(unittest.TestCase):
         self.assertEqual(provider, "gemini")
         self.assertEqual(len(items), 3)
         gemini.assert_called_once()
+
+    def test_launch_kit_local_schema_is_complete_and_grounded(self) -> None:
+        action = self.create_planned_action()
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            status, kit = self.api(f"/api/actions/{action['id']}/launch-kit", "POST", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(kit["provider"], "local")
+        self.assertEqual(kit["offer_name"], "Festival Fuel")
+        self.assertEqual(kit["action_id"], action["id"])
+        self.assertLessEqual(len(kit["customer_copy"]["sms"]), 160)
+        self.assertGreaterEqual(len(kit["operations"]), 2)
+        self.assertEqual(kit["measurement"]["baseline_sales"], 125)
+        _, listed = self.api("/api/actions?business=Test%20Coffee")
+        self.assertTrue(listed["actions"][0]["has_launch_kit"])
+        self.assertEqual(listed["actions"][0]["launch_kit"]["offer_name"], "Festival Fuel")
+
+    def test_launch_kit_creation_is_idempotent_and_refresh_replaces_it(self) -> None:
+        action = self.create_planned_action()
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            _, first = self.api(f"/api/actions/{action['id']}/launch-kit", "POST", {})
+            _, second = self.api(f"/api/actions/{action['id']}/launch-kit", "POST", {})
+            _, refreshed = self.api(f"/api/actions/{action['id']}/launch-kit", "POST", {"refresh": True})
+        self.assertEqual(first, second)
+        self.assertNotEqual(first["generated_at"], refreshed["generated_at"])
+        _, fetched = self.api(f"/api/actions/{action['id']}/launch-kit")
+        self.assertEqual(fetched, refreshed)
+
+    @patch("backend.app.gemini_launch_kit", return_value=None)
+    @patch("backend.app.anthropic_launch_kit", return_value={"offer_name": "Incomplete"})
+    def test_malformed_provider_kit_falls_back_safely(self, _anthropic, _gemini) -> None:
+        action = self.create_planned_action()
+        with patch.dict(sidekick.os.environ, {"AI_PROVIDER": "auto", "SIDEKICK_OFFLINE": "0"}, clear=False):
+            kit = sidekick.generate_launch_kit(action["id"])
+        self.assertEqual(kit["provider"], "local")
+        self.assertTrue(kit["customer_copy"]["sign_headline"])
+
+    @patch("backend.app.gemini_launch_kit")
+    @patch("backend.app.anthropic_launch_kit")
+    def test_provider_outputs_share_identical_normalized_shape(self, anthropic, gemini) -> None:
+        action = self.create_planned_action()
+        context = sidekick.launch_kit_context(action)
+        raw = sidekick.local_launch_kit(context)
+        anthropic.return_value = raw
+        gemini.return_value = raw
+        keys = set(sidekick.normalize_launch_kit(raw, action["id"], "local", context))
+        for provider, implementation in (("anthropic", anthropic), ("gemini", gemini)):
+            normalized = sidekick.normalize_launch_kit(implementation(context), action["id"], provider, context)
+            self.assertEqual(set(normalized), keys)
+            self.assertEqual(set(normalized["customer_copy"]), {"social", "sms", "sign_headline", "sign_body"})
+
+    @patch("backend.app.gemini_launch_kit", return_value=None)
+    @patch("backend.app.anthropic_launch_kit")
+    def test_ungrounded_discount_is_rejected(self, anthropic, _gemini) -> None:
+        action = self.create_planned_action()
+        context = sidekick.launch_kit_context(action)
+        unsafe = sidekick.local_launch_kit(context)
+        unsafe["customer_copy"]["social"] = "Get a free pastry today"
+        anthropic.return_value = unsafe
+        with patch.dict(sidekick.os.environ, {"AI_PROVIDER": "auto", "SIDEKICK_OFFLINE": "0"}, clear=False):
+            kit = sidekick.generate_launch_kit(action["id"])
+        self.assertEqual(kit["provider"], "local")
+        self.assertNotIn("free pastry", kit["customer_copy"]["social"].lower())
+
+    @patch("backend.app.gemini_launch_kit")
+    @patch("backend.app.anthropic_launch_kit")
+    def test_offline_launch_kit_makes_no_provider_calls(self, anthropic, gemini) -> None:
+        action = self.create_planned_action()
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            kit = sidekick.generate_launch_kit(action["id"])
+        anthropic.assert_not_called()
+        gemini.assert_not_called()
+        self.assertEqual(kit["provider"], "local")
+
+    def test_missing_launch_kit_action_returns_safe_errors(self) -> None:
+        for path, method, payload, expected in (
+            ("/api/actions/9999/launch-kit", "GET", None, 404),
+            ("/api/actions/9999/launch-kit", "POST", {}, 400),
+        ):
+            with self.assertRaises(HTTPError) as context:
+                self.api(path, method, payload)
+            self.assertEqual(context.exception.code, expected)
 
     @patch("backend.app.advisor_recommendations")
     @patch("backend.app.discover_events")

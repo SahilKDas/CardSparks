@@ -1,4 +1,4 @@
-"""SQLite persistence for profiles, briefings, planned actions, and outcomes."""
+"""SQLite persistence for profiles, briefings, actions, outcomes, and launch kits."""
 
 from __future__ import annotations
 
@@ -70,6 +70,15 @@ class SidekickStore:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(action_id) REFERENCES actions(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS campaign_kits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    action_id INTEGER NOT NULL UNIQUE,
+                    provider TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    generated_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(action_id) REFERENCES actions(id) ON DELETE CASCADE
+                );
                 CREATE INDEX IF NOT EXISTS idx_actions_profile ON actions(profile_name, id DESC);
                 CREATE INDEX IF NOT EXISTS idx_briefings_profile ON briefings(profile_name, id DESC);
                 """
@@ -82,6 +91,11 @@ class SidekickStore:
                 "INSERT OR REPLACE INTO profiles(name, payload, updated_at) VALUES (?, ?, ?)",
                 (profile["name"], json.dumps(profile), timestamp),
             )
+
+    def get_profile(self, profile_name: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute("SELECT payload FROM profiles WHERE name = ?", (profile_name,)).fetchone()
+        return json.loads(row["payload"]) if row else None
 
     def save_briefing(self, profile_name: str, advisor_mode: str, recommendations: list[dict[str, Any]], generated_at: str) -> None:
         with self.connect() as connection:
@@ -139,8 +153,10 @@ class SidekickStore:
         try:
             row = connection.execute(
                 """SELECT a.*, o.observed_sales, o.baseline_sales, o.lift_amount,
-                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at
+                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at,
+                          k.payload AS launch_kit_payload
                    FROM actions a LEFT JOIN outcomes o ON o.action_id = a.id
+                   LEFT JOIN campaign_kits k ON k.action_id = a.id
                    WHERE a.id = ?""",
                 (action_id,),
             ).fetchone()
@@ -155,8 +171,10 @@ class SidekickStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """SELECT a.*, o.observed_sales, o.baseline_sales, o.lift_amount,
-                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at
+                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at,
+                          k.payload AS launch_kit_payload
                    FROM actions a LEFT JOIN outcomes o ON o.action_id = a.id
+                   LEFT JOIN campaign_kits k ON k.action_id = a.id
                    WHERE a.profile_name = ? ORDER BY a.id DESC LIMIT 50""",
                 (profile_name,),
             ).fetchall()
@@ -205,6 +223,33 @@ class SidekickStore:
     def recent_outcomes(self, profile_name: str, limit: int = 5) -> list[dict[str, Any]]:
         return [action for action in self.list_actions(profile_name) if action.get("outcome")][:limit]
 
+    def get_launch_kit(self, action_id: int) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            action = connection.execute("SELECT id FROM actions WHERE id = ?", (action_id,)).fetchone()
+            if not action:
+                raise ValueError("Action not found.")
+            row = connection.execute("SELECT payload FROM campaign_kits WHERE action_id = ?", (action_id,)).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def save_launch_kit(self, action_id: int, provider: str, kit: dict[str, Any]) -> dict[str, Any]:
+        timestamp = now_iso()
+        payload = json.dumps(kit)
+        with self.connect() as connection:
+            action = connection.execute("SELECT id FROM actions WHERE id = ?", (action_id,)).fetchone()
+            if not action:
+                raise ValueError("Action not found.")
+            connection.execute(
+                """INSERT INTO campaign_kits(action_id, provider, payload, generated_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(action_id) DO UPDATE SET
+                     provider = excluded.provider,
+                     payload = excluded.payload,
+                     generated_at = excluded.generated_at,
+                     updated_at = excluded.updated_at""",
+                (action_id, provider, payload, str(kit.get("generated_at", timestamp)), timestamp),
+            )
+        return kit
+
     def reset_business(self, profile_name: str) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM actions WHERE profile_name = ?", (profile_name,))
@@ -234,6 +279,7 @@ class SidekickStore:
                 "lift_amount": row["lift_amount"], "lift_percent": row["lift_percent"],
                 "helped": row["helped"], "note": row["note"], "created_at": row["outcome_at"],
             }
+        launch_kit = json.loads(row["launch_kit_payload"]) if row["launch_kit_payload"] else None
         return {
             "id": row["id"], "profile_name": row["profile_name"], "recommendation_id": row["recommendation_id"],
             "title": row["title"], "action": row["action_text"], "why": row["why_text"],
@@ -241,4 +287,5 @@ class SidekickStore:
             "confidence": row["confidence"], "success_metric": row["success_metric"],
             "scheduled_for": row["scheduled_for"], "status": row["status"], "is_demo": bool(row["is_demo"]),
             "created_at": row["created_at"], "updated_at": row["updated_at"], "outcome": outcome,
+            "has_launch_kit": launch_kit is not None, "launch_kit": launch_kit,
         }

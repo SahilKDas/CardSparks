@@ -415,6 +415,201 @@ def advisor_recommendations(profile: dict[str, Any], summary: dict[str, Any], we
     return normalize_recommendations(local, defaults) or local, "local"
 
 
+def launch_kit_context(action: dict[str, Any]) -> dict[str, Any]:
+    """Return the intentionally narrow, aggregated context sent to an AI provider."""
+    sidekick_store = store()
+    profile = sidekick_store.get_profile(action["profile_name"]) or {}
+    return {
+        "business_type": str(profile.get("type", "Small business"))[:120],
+        "business_goal": str(profile.get("goal", "Grow the business"))[:160],
+        "action": str(action["action"])[:1200],
+        "title": str(action["title"])[:240],
+        "evidence": [str(item)[:220] for item in action.get("evidence", [])][:3],
+        "signals": [item for item in action.get("signals", []) if item in {"sales", "weather", "event"}],
+        "scheduled_date": action["scheduled_for"],
+        "success_metric": str(action.get("success_metric", "Sales versus the comparable-day baseline"))[:300],
+        "baseline_sales": sidekick_store.baseline_for(action["profile_name"], action["scheduled_for"]),
+    }
+
+
+def local_launch_kit(context: dict[str, Any]) -> dict[str, Any]:
+    """Create a complete, fast kit without network access or ungrounded commercial claims."""
+    action = context["action"].strip()
+    evidence = " ".join(context.get("evidence", []))
+    signals = context.get("signals", [])
+    if "event" in signals:
+        offer_name = "Festival Fuel"
+        audience = "People heading to the nearby event"
+        headline = "FESTIVAL FUEL"
+        body = "Fuel up before the nearby event"
+        launch_time = "15:30"
+        social = f"Heading to the nearby event? Stop in first. {action}"
+    elif "weather" in signals or "rain" in (action + evidence).lower():
+        offer_name = "Rainy Day Reset"
+        audience = "Customers adjusting their routine for the weather"
+        headline = "RAINY DAY RESET"
+        body = "A thoughtful stop for a rainy day"
+        launch_time = "07:00"
+        social = f"Rain in the plan? We have a timely reason to stop in. {action}"
+    else:
+        offer_name = "This Week's Smart Move"
+        audience = "Regular and nearby customers"
+        headline = "TODAY'S SMART MOVE"
+        body = "A timely reason to stop in today"
+        launch_time = "09:00"
+        social = f"A timely update from your neighborhood business: {action}"
+    sms = social if len(social) <= 157 else social[:156].rstrip(" ,.;:") + "…"
+    first_step = action.split(".", 1)[0].strip()
+    operations = [
+        {"task": first_step or "Prepare the planned offer", "timing": "Before launch", "owner": "Shift lead"},
+        {"task": "Set up the customer-facing sign", "timing": "Before launch", "owner": "Front counter"},
+        {"task": "Record sales against the comparable-day baseline", "timing": "End of day", "owner": "Owner"},
+    ]
+    return {
+        "offer_name": offer_name,
+        "audience": audience,
+        "schedule": {"date": context["scheduled_date"], "time": launch_time, "label": "Suggested launch time"},
+        "customer_copy": {"social": social, "sms": sms, "sign_headline": headline, "sign_body": body},
+        "operations": operations,
+        "measurement": {"metric": context["success_metric"], "baseline_sales": context["baseline_sales"]},
+    }
+
+
+def launch_kit_prompt(context: dict[str, Any]) -> str:
+    return """You are Sidekick, a practical campaign assistant for a small business. Turn the supplied planned action into one ready-to-use Launch Kit. Return ONLY JSON with: offer_name, audience, schedule {date, time in HH:MM, label}, customer_copy {social, sms under 160 characters, sign_headline, sign_body}, operations (2-5 objects with task, timing, owner), and measurement {metric, baseline_sales}. Use only the supplied facts. Do not invent discounts, event partnerships, prices, quantities, dates, or performance claims. A price, discount, or quantity may appear only when it already appears verbatim in the action or evidence. Do not imply anything has been published, scheduled remotely, or sent.\n\nAGGREGATED CONTEXT:\n""" + json.dumps(context, separators=(",", ":"))
+
+
+def parse_launch_kit_response(text: str) -> dict[str, Any] | None:
+    try:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        parsed = json.loads(match.group(0) if match else text)
+        if isinstance(parsed.get("launch_kit"), dict):
+            parsed = parsed["launch_kit"]
+        return parsed if isinstance(parsed, dict) else None
+    except (ValueError, json.JSONDecodeError, AttributeError):
+        return None
+
+
+def _contains_unsupported_claim(kit: dict[str, Any], context: dict[str, Any]) -> bool:
+    source = " ".join([context.get("action", ""), *context.get("evidence", [])]).lower()
+    claims = json.dumps({
+        "offer_name": kit.get("offer_name"), "audience": kit.get("audience"),
+        "customer_copy": kit.get("customer_copy"), "operations": kit.get("operations"),
+    }).lower()
+    tokens = re.findall(r"\$\s?\d[\d,.]*|\b\d+(?:\.\d+)?%", claims)
+    if any(token.replace(" ", "") not in source.replace(" ", "") for token in tokens):
+        return True
+    guarded_words = ("discount", "free ", "partnered", "official partner", "sponsored")
+    return any(word in claims and word not in source for word in guarded_words)
+
+
+def normalize_launch_kit(raw: dict[str, Any] | None, action_id: int, provider: str, context: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or _contains_unsupported_claim(raw, context):
+        return None
+    schedule, copy, measurement = raw.get("schedule"), raw.get("customer_copy"), raw.get("measurement")
+    operations = raw.get("operations")
+    if not all(isinstance(value, dict) for value in (schedule, copy, measurement)) or not isinstance(operations, list):
+        return None
+    required_copy = ("social", "sms", "sign_headline", "sign_body")
+    if not raw.get("offer_name") or not raw.get("audience") or any(not str(copy.get(key, "")).strip() for key in required_copy):
+        return None
+    normalized_operations = []
+    for item in operations[:5]:
+        if not isinstance(item, dict) or not all(str(item.get(key, "")).strip() for key in ("task", "timing", "owner")):
+            continue
+        normalized_operations.append({key: str(item[key]).strip()[:300 if key == "task" else 100] for key in ("task", "timing", "owner")})
+    if len(normalized_operations) < 2:
+        return None
+    schedule_date = str(schedule.get("date", ""))[:10]
+    try:
+        date.fromisoformat(schedule_date)
+    except ValueError:
+        schedule_date = context["scheduled_date"]
+    schedule_time = str(schedule.get("time", ""))[:5]
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule_time):
+        return None
+    sms = str(copy["sms"]).strip()[:160]
+    return {
+        "action_id": action_id,
+        "provider": provider,
+        "offer_name": str(raw["offer_name"]).strip()[:120],
+        "audience": str(raw["audience"]).strip()[:240],
+        "schedule": {"date": schedule_date, "time": schedule_time, "label": str(schedule.get("label") or "Suggested launch time")[:100]},
+        "customer_copy": {
+            "social": str(copy["social"]).strip()[:600], "sms": sms,
+            "sign_headline": str(copy["sign_headline"]).strip()[:80], "sign_body": str(copy["sign_body"]).strip()[:180],
+        },
+        "operations": normalized_operations,
+        "measurement": {
+            "metric": str(measurement.get("metric") or context["success_metric"])[:300],
+            "baseline_sales": round(float(context["baseline_sales"]), 2),
+        },
+        "generated_at": now_iso(),
+    }
+
+
+def anthropic_launch_kit(context: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return None
+    payload = {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"), "max_tokens": 1400, "temperature": 0.2, "messages": [{"role": "user", "content": launch_kit_prompt(context)}]}
+    try:
+        response = post_json("https://api.anthropic.com/v1/messages", payload, headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"}, timeout=8)
+        text = "".join(block.get("text", "") for block in response.get("content", []) if block.get("type") == "text")
+        return parse_launch_kit_response(text)
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        print(f"[sidekick] Anthropic Launch Kit unavailable: {exc}")
+    return None
+
+
+def gemini_launch_kit(context: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    text_field = {"type": "string"}
+    schema = {
+        "type": "object", "required": ["offer_name", "audience", "schedule", "customer_copy", "operations", "measurement"],
+        "properties": {
+            "offer_name": text_field, "audience": text_field,
+            "schedule": {"type": "object", "properties": {"date": text_field, "time": text_field, "label": text_field}, "required": ["date", "time", "label"]},
+            "customer_copy": {"type": "object", "properties": {key: text_field for key in ("social", "sms", "sign_headline", "sign_body")}, "required": ["social", "sms", "sign_headline", "sign_body"]},
+            "operations": {"type": "array", "minItems": 2, "maxItems": 5, "items": {"type": "object", "properties": {key: text_field for key in ("task", "timing", "owner")}, "required": ["task", "timing", "owner"]}},
+            "measurement": {"type": "object", "properties": {"metric": text_field, "baseline_sales": {"type": "number"}}, "required": ["metric", "baseline_sales"]},
+        },
+    }
+    payload = {"contents": [{"role": "user", "parts": [{"text": launch_kit_prompt(context)}]}], "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json", "responseSchema": schema}}
+    try:
+        response = post_json(f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model)}:generateContent?key={quote(api_key)}", payload, headers={}, timeout=8)
+        return parse_launch_kit_response(response["candidates"][0]["content"]["parts"][0]["text"])
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as exc:
+        print(f"[sidekick] Gemini Launch Kit unavailable: {exc}")
+    return None
+
+
+def generate_launch_kit(action_id: int, refresh: bool = False) -> dict[str, Any]:
+    sidekick_store = store()
+    existing = sidekick_store.get_launch_kit(action_id)
+    if existing and not refresh:
+        return existing
+    action = sidekick_store.get_action(action_id)
+    context = launch_kit_context(action)
+    provider = "local" if os.environ.get("SIDEKICK_OFFLINE", "").lower() in {"1", "true", "yes"} else os.environ.get("AI_PROVIDER", "auto").strip().lower()
+    candidates = []
+    if provider in {"auto", "anthropic"}:
+        candidates.append(("anthropic", anthropic_launch_kit))
+    if provider in {"auto", "gemini"}:
+        candidates.append(("gemini", gemini_launch_kit))
+    for name, implementation in candidates:
+        normalized = normalize_launch_kit(implementation(context), action_id, name, context)
+        if normalized:
+            return sidekick_store.save_launch_kit(action_id, name, normalized)
+    local = normalize_launch_kit(local_launch_kit(context), action_id, "local", context)
+    if not local:
+        raise ValueError("Sidekick could not build a safe Launch Kit for this action.")
+    return sidekick_store.save_launch_kit(action_id, "local", local)
+
+
 def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
     profile = clean_profile(payload)
     summary = summarize_sales(profile["sales"])
@@ -497,6 +692,16 @@ class SidekickHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/actions":
             business = parse_qs(parsed.query).get("business", [""])[0][:120]
             self.send_json(200, {"actions": store().list_actions(business)})
+        elif match := re.fullmatch(r"/api/actions/(\d+)/launch-kit", parsed.path):
+            try:
+                kit = store().get_launch_kit(int(match.group(1)))
+            except ValueError:
+                self.send_json(404, {"error": "Action not found."})
+                return
+            if kit:
+                self.send_json(200, kit)
+            else:
+                self.send_json(404, {"error": "Launch Kit not found. Build it from the Playbook first."})
         else:
             self.serve_frontend(parsed.path)
 
@@ -510,6 +715,8 @@ class SidekickHandler(BaseHTTPRequestHandler):
                 self.send_json(201, store().create_action(payload))
             elif path == "/api/demo/reset":
                 self.send_json(200, reset_demo_story())
+            elif match := re.fullmatch(r"/api/actions/(\d+)/launch-kit", path):
+                self.send_json(200, generate_launch_kit(int(match.group(1)), bool(payload.get("refresh", False))))
             elif match := re.fullmatch(r"/api/actions/(\d+)/outcome", path):
                 self.send_json(200, store().record_outcome(int(match.group(1)), payload))
             else:
