@@ -1,5 +1,7 @@
 # Sidekick AI
 
+**Teammates and coding agents:** start with [`CONTEXT.md`](CONTEXT.md) for the architecture, contracts, guardrails, current tradeoffs, and safe next tasks.
+
 Sidekick AI is a real-time business co-pilot for independent owners. It connects recent sales, weather, and nearby events, recommends three concrete moves, helps the owner act on one, measures the result against a comparable-day baseline, and brings that learning into tomorrow’s advice.
 
 > Sidekick gives a neighborhood owner the daily counsel and learning loop that chains get from a data team.
