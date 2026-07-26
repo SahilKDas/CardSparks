@@ -11,7 +11,7 @@ Sidekick AI is a hackathon project for the **Small Business AI** track. It gives
 3. Nearby events.
 4. Outcomes from actions the owner previously tried.
 
-It then recommends three concrete moves, explains the evidence, lets the owner put a move into **Today’s Playbook**, and measures the result against comparable weekdays. The differentiator is the closed loop: advice → action → measured outcome → better advice.
+It then recommends three concrete moves, explains the evidence, lets the owner put a move into **Today’s Playbook**, builds an immediately usable **Launch Kit**, and measures the result against comparable weekdays. The differentiator is the closed loop: advice → campaign artifacts → action → measured outcome → better advice.
 
 The canonical demo persona is **Juniper Coffee Co. in Portland, Oregon**. Demo data is deliberately labeled.
 
@@ -28,8 +28,8 @@ Open `http://localhost:8000` and click **See the coffee shop demo**. Do this bef
 
 Expected baseline:
 
-- 4 frontend tests pass.
-- 11 backend tests pass.
+- 7 frontend tests pass.
+- 18 backend tests pass.
 - The production build succeeds.
 - The demo shows a prior measured result of **+$210 versus baseline**.
 - Settings contains **Reset recorded-demo story**.
@@ -58,7 +58,7 @@ Python ThreadingHTTPServer — standard library only
    ├── Open-Meteo geocoding and weather
    ├── Ticketmaster → Nager.Date → labeled curated events
    ├── Anthropic → Gemini → deterministic local advisor
-   └── SQLite profiles, briefings, actions, outcomes
+   └── SQLite profiles, briefings, actions, outcomes, campaign kits
 ```
 
 Key files:
@@ -91,7 +91,7 @@ AI provider adapter or local advisor
         ↓
 normalize one shared recommendation schema
         ↓
-dashboard → Playbook → outcome → next briefing
+dashboard → Playbook → Launch Kit → outcome → next briefing
 ```
 
 The shared recommendation shape is:
@@ -114,6 +114,24 @@ The shared recommendation shape is:
 
 All providers must pass through `normalize_recommendations`; do not create provider-specific UI branches.
 
+Launch Kits use a second provider-independent contract:
+
+```json
+{
+  "action_id": 12,
+  "provider": "local",
+  "offer_name": "Festival Fuel",
+  "audience": "People heading to the nearby event",
+  "schedule": { "date": "2026-08-01", "time": "15:30", "label": "Suggested launch time" },
+  "customer_copy": { "social": "...", "sms": "...", "sign_headline": "FESTIVAL FUEL", "sign_body": "..." },
+  "operations": [{ "task": "...", "timing": "Before launch", "owner": "Shift lead" }],
+  "measurement": { "metric": "Event-day sales versus baseline", "baseline_sales": 1443 },
+  "generated_at": "ISO-8601 timestamp"
+}
+```
+
+All providers pass through `normalize_launch_kit`. The provider input is deliberately limited to business type/goal, action text, evidence, date, and baseline. Do not send raw customer data or invent a discount, price, partnership, or quantity that is absent from the source action/evidence.
+
 ## API contract
 
 | Method | Path | Purpose |
@@ -124,6 +142,8 @@ All providers must pass through `normalize_recommendations`; do not create provi
 | `GET` | `/api/actions?business=...` | Read planned/completed/measured actions |
 | `PATCH` | `/api/actions/{id}` | Set `planned`, `completed`, or `dismissed` |
 | `POST` | `/api/actions/{id}/outcome` | Record sales/helpfulness/note and calculate lift |
+| `POST` | `/api/actions/{id}/launch-kit` | Create/reuse a kit; `{"refresh": true}` replaces it |
+| `GET` | `/api/actions/{id}/launch-kit` | Read the stored kit |
 | `POST` | `/api/demo/reset` | Idempotently rebuild the Juniper recorded-demo story |
 | `GET` | `/api/health` | Health, version, provider selection, offline status |
 
@@ -196,9 +216,9 @@ Choose a bounded task and announce it before editing:
 
 1. Run the five-person usability protocol and fix the most common observed confusion.
 2. Add free Gemini/Ticketmaster keys locally and rehearse the primary recording path—never commit the keys.
-3. Improve keyboard focus, modal accessibility, and screen-reader labels without changing the demo narrative.
+3. Run the Launch Kit flow at 390px and improve any keyboard/focus issue without changing the demo narrative.
 4. Add frontend tests for the complete planned → completed → outcome interaction using mocked API responses.
-5. Review the video script for timing and capture a clean normal plus offline take.
+5. Capture and time a clean normal plus offline take using the Launch Kit reveal in the recording guide.
 
 Avoid speculative feature expansion until the recorded submission is complete.
 

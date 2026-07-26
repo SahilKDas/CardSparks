@@ -59,7 +59,7 @@ const fallbackBriefing = {
   sales_summary: { total: 20195, average: 1443, trend_percent: 12.4, best_day: 'Saturday' },
   advisor_mode: 'local', learning_count: 1, recent_win: fallbackDemoAction,
   recommendations: [
-    { id: 'event-rush', priority: 'Today’s best move', icon: 'event', title: 'Turn Friday’s festival crowd into regulars', action: 'Prep 25% more cold brew and pastries by Friday afternoon. Put a “festival fuel” sidewalk bundle at $9 and include a bounce-back card for Monday.', why: 'Waterfront festival · 0.8 mi away · Fridays already run 18% above average', signals: ['event', 'sales'], impact: 'High upside', evidence: ['Waterfront festival is 0.8 mi away on Friday', 'Friday sales run 18% above the shop average'], confidence: 'high', success_metric: 'Friday sales versus the current daily average' },
+    { id: 'event-rush', priority: 'Today’s best move', icon: 'event', title: 'Turn Friday’s festival crowd into regulars', action: 'Prep 25% more cold brew and pastries by Friday afternoon. Put a “festival fuel” sidewalk bundle at $9 and include a bounce-back card for Monday.', why: 'Waterfront festival · 0.8 mi away · Fridays already run 18% above average', signals: ['event', 'sales'], impact: 'High upside', evidence: ['Waterfront festival is 0.8 mi away on Friday', 'Friday sales run 18% above the shop average'], confidence: 'high', success_metric: 'Friday sales versus the current daily average', scheduled_for: '2026-07-31' },
     { id: 'rainy-monday', priority: 'Plan ahead', icon: 'rain', title: 'Make rainy Monday feel intentional', action: 'Schedule a 7–10 AM “Rainy Day Double Points” message Sunday night. Keep two extra baristas on the morning shift, then taper after lunch.', why: '65% chance of rain Monday · Mondays are your softest sales day', signals: ['weather', 'sales'], impact: 'Protects a slow day', evidence: ['Monday has a 65% chance of rain', 'Monday is the lowest-performing weekday'], confidence: 'medium', success_metric: 'Monday sales versus the usual Monday baseline' },
     { id: 'repeat-learned-win', priority: 'Sidekick learned', icon: 'spark', title: 'Repeat the play that added $210', action: 'Reuse the strongest part of the rainy-morning offer in a two-hour window, then log sales again so Sidekick can separate a repeatable play from a one-off win.', why: 'The prior action finished $210 above its comparable-day baseline', signals: ['sales'], impact: 'Compounding insight', evidence: ['Observed sales: $1,420', 'Comparable-day baseline: $1,210'], confidence: 'high', success_metric: 'Beat the comparable-day baseline again' },
   ],
@@ -121,7 +121,7 @@ function App() {
 
   async function addToPlan(recommendation) {
     try {
-      const response = await fetch(`${API}/api/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_name: profile.name, recommendation, scheduled_for: new Date().toISOString().slice(0, 10), is_demo: profile.name === demoProfile.name }) })
+      const response = await fetch(`${API}/api/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_name: profile.name, recommendation, scheduled_for: recommendation.scheduled_for || new Date().toISOString().slice(0, 10), is_demo: profile.name === demoProfile.name }) })
       if (!response.ok) throw new Error()
       const action = await response.json()
       setActions((current) => [action, ...current.filter((item) => item.id !== action.id)])

@@ -192,6 +192,7 @@ def ticketmaster_events(place: dict[str, Any]) -> list[dict[str, Any]]:
         classification = (event.get("classifications") or [{}])[0]
         events.append({
             "name": event.get("name", "Local event"), "date": event_date.strftime("%a, %b %-d") if os.name != "nt" else event_date.strftime("%a, %b %#d"),
+            "iso_date": event_date.isoformat(),
             "time": format_time(start_data.get("localTime")), "distance": "Within 15 mi",
             "category": classification.get("segment", {}).get("name", "Local event"), "opportunity": "high",
             "url": event.get("url", ""),
@@ -220,6 +221,7 @@ def holiday_events(country_code: str) -> list[dict[str, Any]]:
         if today <= holiday_date <= end and holiday.get("global", True):
             events.append({
                 "name": holiday["localName"], "date": format_event_date(holiday_date), "time": "All day",
+                "iso_date": holiday_date.isoformat(),
                 "distance": "Community-wide", "category": "Public holiday", "opportunity": "medium",
             })
     return events
@@ -237,7 +239,7 @@ def curated_demo_events(city: str) -> list[dict[str, Any]]:
         (f"{city} Community Music Series", 4, "6:30 PM", "Community", "medium", "1.2 mi"),
         ("Weekend Makers & Farmers Market", 6, "9:00 AM", "Market", "high", "0.6 mi"),
     ]
-    return [{"name": name, "date": format_event_date(today + timedelta(days=offset)), "time": event_time, "distance": distance, "category": category, "opportunity": opportunity} for name, offset, event_time, category, opportunity, distance in names]
+    return [{"name": name, "date": format_event_date(today + timedelta(days=offset)), "iso_date": (today + timedelta(days=offset)).isoformat(), "time": event_time, "distance": distance, "category": category, "opportunity": opportunity} for name, offset, event_time, category, opportunity, distance in names]
 
 
 def discover_events(place: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
@@ -632,6 +634,13 @@ def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
             weather, live_weather = fallback_weather(), False
         events, events_source = discover_events(place)
     recommendations, advisor_mode = advisor_recommendations(profile, summary, weather, events, outcomes)
+    rainiest_date = max(weather["forecast"], key=lambda day: day["rain"]).get("date")
+    event_date = events[0].get("iso_date") if events else None
+    for recommendation in recommendations:
+        if "event" in recommendation.get("signals", []) and event_date:
+            recommendation["scheduled_for"] = event_date
+        elif "weather" in recommendation.get("signals", []) and rainiest_date:
+            recommendation["scheduled_for"] = rainiest_date
     generated_at = now_iso()
     recent_win = next((item for item in outcomes if item.get("outcome") and item["outcome"]["lift_amount"] > 0), outcomes[0] if outcomes else None)
     result = {

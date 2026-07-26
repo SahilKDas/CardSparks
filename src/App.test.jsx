@@ -95,8 +95,10 @@ describe('Launch Kit artifacts', () => {
     expect(calendar).toContain('Nothing is published or sent automatically.')
   })
 
-  it('shows complete copy, sign, operations, and measurement artifacts', () => {
+  it('shows complete artifacts and copies the exact customer text', async () => {
     const action = { profile_name: 'Juniper Coffee Co.', is_demo: true }
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     const { container } = render(<LaunchKitStudio action={action} kit={launchKit} close={vi.fn()} refresh={vi.fn()} />)
     expect(screen.getByText('Phone preview')).toBeTruthy()
     expect(screen.getByText('Print-ready preview')).toBeTruthy()
@@ -105,5 +107,7 @@ describe('Launch Kit artifacts', () => {
     expect(screen.getByText('Download calendar task')).toBeTruthy()
     expect(container.querySelector('.launch-sign').textContent).toContain('FESTIVAL FUEL')
     expect(screen.queryByText(/Publish|Schedule|Send message/)).toBeNull()
+    fireEvent.click(screen.getAllByText('Copy')[0])
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(launchKit.customer_copy.social))
   })
 })

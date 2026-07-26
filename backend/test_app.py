@@ -82,6 +82,8 @@ class SidekickTests(unittest.TestCase):
         self.assertEqual(data["advisor_mode"], "local")
         self.assertTrue(all(len(item["evidence"]) >= 2 for item in data["recommendations"]))
         self.assertTrue(all(item["success_metric"] for item in data["recommendations"]))
+        event_move = next(item for item in data["recommendations"] if "event" in item["signals"])
+        self.assertEqual(event_move["scheduled_for"], data["events"][0]["iso_date"])
         _, history = self.api("/api/history?business=Test%20Coffee")
         self.assertEqual(len(history["history"]), 1)
 

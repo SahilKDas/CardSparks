@@ -2,7 +2,7 @@
 
 **Teammates and coding agents:** start with [`CONTEXT.md`](CONTEXT.md) for the architecture, contracts, guardrails, current tradeoffs, and safe next tasks.
 
-Sidekick AI is a real-time business co-pilot for independent owners. It connects recent sales, weather, and nearby events, recommends three concrete moves, helps the owner act on one, measures the result against a comparable-day baseline, and brings that learning into tomorrow’s advice.
+Sidekick AI is a real-time business co-pilot for independent owners. It connects recent sales, weather, and nearby events, recommends three concrete moves, turns one into a ready-to-use **Launch Kit**, measures the result against a comparable-day baseline, and brings that learning into tomorrow’s advice.
 
 > Sidekick gives a neighborhood owner the daily counsel and learning loop that chains get from a data team.
 
@@ -16,6 +16,8 @@ The ready-made story follows **Juniper Coffee Co.**, a Portland coffee shop tryi
 - Validated recommendation schema with confidence, success metric, and exact evidence.
 - Expandable “How I connected the dots” sales × weather × events trail.
 - **Today’s Playbook** with planned, completed, dismissed, and measured actions.
+- One-click **Launch Kit Studio** with social/SMS copy, a printable sidewalk sign, operations checklist, suggested timing, calendar download, and measurement plan.
+- Idempotent Launch Kits: reopen the stored kit or explicitly regenerate it without changing the action’s planned status.
 - Outcome logging and lift calculation against historical sales for the same weekday.
 - A visible “Yesterday’s win” and recommendations informed by measured outcomes.
 - Resettable, idempotent recorded-demo story.
@@ -34,7 +36,7 @@ npm start
 
 Open [http://localhost:8000](http://localhost:8000), then click **See the coffee shop demo**.
 
-The demo reset creates one clearly labeled prior action that earned **$210 above its comparable-day baseline**. It then generates a fresh briefing that learns from that result. Reset it any time under **Business profile → Reset recorded-demo story**.
+The demo reset creates one clearly labeled prior action that earned **$210 above its comparable-day baseline**. It then generates a fresh briefing that learns from that result, but deliberately does not pre-build a Launch Kit. Put the first event recommendation into the Playbook and click **Build Launch Kit** to reveal the “Festival Fuel” demo beat. Reset it any time under **Business profile → Reset recorded-demo story**.
 
 ## Zero-cost API setup
 
@@ -117,7 +119,7 @@ Dates use `YYYY-MM-DD`. A sample is available at [`demo/sample_sales.csv`](demo/
 
 ## Recorded submission
 
-Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:50 storyboard, narration, cursor path, preflight checklist, and offline backup take.
+Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:55 storyboard, narration, cursor path, Launch Kit reveal, preflight checklist, and offline backup take.
 
 Because no real business owner is available for testing, use [`demo/USABILITY_TEST.md`](demo/USABILITY_TEST.md) with five non-technical participants. Report completion rates and timing honestly; do not invent a testimonial.
 
@@ -151,11 +153,15 @@ POST  /api/actions
 GET   /api/actions?business=...
 PATCH /api/actions/{id}
 POST  /api/actions/{id}/outcome
+POST  /api/actions/{id}/launch-kit
+GET   /api/actions/{id}/launch-kit
 POST  /api/demo/reset
 GET   /api/health
 ```
 
 `POST /api/actions/{id}/outcome` accepts observed sales, `yes`/`no`/`unsure`, and an optional note. The backend determines the comparable weekday from the stored sales history and returns baseline, lift amount, and lift percentage.
+
+`POST /api/actions/{id}/launch-kit` returns the stored kit when one exists. Send `{"refresh": true}` to replace it. Generation uses the same Anthropic → Gemini → local provider chain and one normalized schema; the provider receives only aggregated business/action context, not raw customer data. Actions returned by the API include `has_launch_kit` and optional `launch_kit`.
 
 ## Architecture
 
@@ -166,7 +172,9 @@ Python threaded HTTP API (zero pip dependencies)
    ├── AI provider adapter + shared schema validation
    ├── Open-Meteo weather and geocoding
    ├── Ticketmaster / Nager.Date / labeled fallback + cache
-   └── SQLite profiles, briefings, actions, and outcomes
+   └── SQLite profiles, briefings, actions, outcomes, and campaign kits
 ```
 
-The deliberately small stack keeps the recorded demo dependable while still demonstrating real APIs, structured AI, persistence, explainability, graceful degradation, and a measurable learning loop.
+The deliberately small stack keeps the recorded demo dependable while still demonstrating real APIs, structured AI, persistence, useful campaign artifacts, explainability, graceful degradation, and a measurable learning loop.
+
+The deployment owner should use [`demo/DEPLOYMENT_HANDOFF.md`](demo/DEPLOYMENT_HANDOFF.md) for the minimal writable-volume and smoke-test checklist. This workstream intentionally does not add hosting infrastructure.
