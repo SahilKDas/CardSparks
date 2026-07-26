@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import sqlite3
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,8 +15,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+from backend.store import SidekickStore, now_iso
+
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("SIDEKICK_DB_PATH", ROOT / "backend" / "sidekick.db"))
+EVENT_CACHE: dict[str, tuple[datetime, list[dict[str, Any]], str]] = {}
 
 
 def load_dotenv() -> None:
@@ -37,24 +39,11 @@ load_dotenv()
 
 
 def init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS profiles (
-                name TEXT PRIMARY KEY,
-                payload TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS briefings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                profile_name TEXT NOT NULL,
-                generated_at TEXT NOT NULL,
-                advisor_mode TEXT NOT NULL,
-                recommendations TEXT NOT NULL
-            );
-            """
-        )
+    SidekickStore(DB_PATH).init()
+
+
+def store() -> SidekickStore:
+    return SidekickStore(DB_PATH)
 
 
 def fetch_json(url: str, *, headers: dict[str, str] | None = None, timeout: int = 8) -> Any:
@@ -252,22 +241,45 @@ def curated_demo_events(city: str) -> list[dict[str, Any]]:
 
 
 def discover_events(place: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    cache_key = f'{round(float(place.get("latitude", 0)), 2)}:{round(float(place.get("longitude", 0)), 2)}:{bool(os.environ.get("TICKETMASTER_API_KEY"))}'
+    cached = EVENT_CACHE.get(cache_key)
+    if cached and datetime.now(timezone.utc) - cached[0] < timedelta(minutes=15):
+        return cached[1], f"{cached[2]} · cached {cached[0].strftime('%H:%M UTC')}"
     try:
         live = ticketmaster_events(place)
         if live:
-            return live, "Ticketmaster Discovery API · live"
+            source = "Ticketmaster Discovery API · live"
+            EVENT_CACHE[cache_key] = (datetime.now(timezone.utc), live, source)
+            return live, source
     except (HTTPError, URLError, TimeoutError, ValueError, KeyError):
         pass
     try:
         holidays = holiday_events(place.get("country_code", "US"))
         if holidays:
-            return holidays, "Nager.Date public holidays · live"
+            source = "Nager.Date public holidays · live"
+            EVENT_CACHE[cache_key] = (datetime.now(timezone.utc), holidays, source)
+            return holidays, source
     except (HTTPError, URLError, TimeoutError, ValueError, KeyError):
         pass
-    return curated_demo_events(place.get("city", "Local")), "Curated demo events · add TICKETMASTER_API_KEY for live listings"
+    events = curated_demo_events(place.get("city", "Local"))
+    source = "Curated demo events · add TICKETMASTER_API_KEY for live listings"
+    EVENT_CACHE[cache_key] = (datetime.now(timezone.utc), events, source)
+    return events, source
 
 
-def fallback_recommendations(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def evidence_defaults(summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
+    rainiest = max(weather["forecast"], key=lambda day: day["rain"])
+    event = events[0] if events else None
+    defaults = [
+        f"Recent sales trend: {summary['trend_percent']:+.1f}% with a ${summary['average']:,} daily average",
+        f"{rainiest['day']} carries the week’s highest rain chance at {rainiest['rain']}%",
+    ]
+    if event:
+        defaults.append(f"{event['name']} is {event['distance']} away on {event['date']}")
+    return defaults
+
+
+def fallback_recommendations(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     business = profile["type"].lower()
     is_coffee = any(word in business for word in ("coffee", "bakery", "cafe"))
     product = "cold brew and grab-and-go pastries" if is_coffee else "your fastest-selling items"
@@ -276,36 +288,139 @@ def fallback_recommendations(profile: dict[str, Any], summary: dict[str, Any], w
     rainiest = max(weather["forecast"], key=lambda day: day["rain"])
     direction = "up" if summary["trend_percent"] >= 0 else "down"
     trend_action = "Protect the momentum" if direction == "up" else "Win back a soft week"
+    learned = outcomes[0] if outcomes else None
+    learned_outcome = learned.get("outcome") if learned else None
+    learned_lift = learned_outcome.get("lift_amount", 0) if learned_outcome else 0
+    third = {
+        "id": "repeat-learned-win" if learned_outcome else "sales-momentum",
+        "priority": "Sidekick learned" if learned_outcome else "This week", "icon": "spark",
+        "title": f"Repeat the play that added ${learned_lift:,.0f}" if learned_outcome and learned_lift > 0 else f"{trend_action} with one measurable offer",
+        "action": f"Reuse the strongest part of “{learned['title']}” in a two-hour window, then log sales again so Sidekick can separate a repeatable play from a one-off win." if learned_outcome else f"Run one two-hour offer tied to your goal: “{profile['goal']}.” Track it separately so next week’s briefing can tell you if it earned a repeat.",
+        "why": f"The prior action finished ${learned_lift:,.0f} versus its comparable-day baseline · the result was marked {learned_outcome['helped']}" if learned_outcome else f"Recent sales are {direction} {abs(summary['trend_percent'])}% · daily average is ${summary['average']:,}",
+        "signals": ["sales"], "impact": "Compounding insight" if learned_outcome else "Easy to measure",
+        "evidence": [f"Observed sales: ${learned_outcome['observed_sales']:,.0f}" if learned_outcome else f"Recent sales trend: {summary['trend_percent']:+.1f}%", f"Comparable-day baseline: ${learned_outcome['baseline_sales']:,.0f}" if learned_outcome else f"Daily average: ${summary['average']:,}"],
+        "confidence": "high" if learned_outcome and learned_outcome["helped"] == "yes" else "medium",
+        "success_metric": "Beat the comparable-day baseline again" if learned_outcome else "Revenue during the two-hour offer window",
+    }
     return [
-        {"id": "event-opportunity", "priority": "Best opportunity", "icon": "event", "title": f"Get in front of the {event['name']} crowd", "action": f"Prepare 20% more {product} before {event['date']} and put {bundle} on a sidewalk sign. Add a bounce-back offer for the following weekday.", "why": f"{event['name']} · {event['distance']} · {summary['best_day']} is already your strongest day", "signals": ["event", "sales"], "impact": "High upside"},
-        {"id": "weather-plan", "priority": "Plan ahead", "icon": "rain", "title": f"Build a {rainiest['day']} rain plan now", "action": f"Schedule a morning loyalty offer the night before and move your most comforting, high-margin products to the front. Staff lightly after the rush if foot traffic softens.", "why": f"{rainiest['rain']}% rain chance on {rainiest['day']} · {summary['lowest_day']} is your softest sales day", "signals": ["weather", "sales"], "impact": "Protects demand"},
-        {"id": "sales-momentum", "priority": "This week", "icon": "spark", "title": f"{trend_action} with one measurable offer", "action": f"Run one two-hour offer tied to your goal: “{profile['goal']}.” Track it as a separate item so next week’s briefing can tell you if it earned a repeat.", "why": f"Recent sales are {direction} {abs(summary['trend_percent'])}% · daily average is ${summary['average']:,}", "signals": ["sales"], "impact": "Easy to measure"},
+        {"id": "event-opportunity", "priority": "Best opportunity", "icon": "event", "title": f"Get in front of the {event['name']} crowd", "action": f"Prepare 20% more {product} before {event['date']} and put {bundle} on a sidewalk sign. Add a bounce-back offer for the following weekday.", "why": f"{event['name']} · {event['distance']} · {summary['best_day']} is already your strongest day", "signals": ["event", "sales"], "impact": "High upside", "evidence": [f"{event['name']} is {event['distance']} away on {event['date']}", f"{summary['best_day']} is the strongest sales day in the uploaded history"], "confidence": "high", "success_metric": "Event-day sales versus the current daily average"},
+        {"id": "weather-plan", "priority": "Plan ahead", "icon": "rain", "title": f"Build a {rainiest['day']} rain plan now", "action": "Schedule a morning loyalty offer the night before and move your most comforting, high-margin products to the front. Staff lightly after the rush if foot traffic softens.", "why": f"{rainiest['rain']}% rain chance on {rainiest['day']} · {summary['lowest_day']} is your softest sales day", "signals": ["weather", "sales"], "impact": "Protects demand", "evidence": [f"{rainiest['rain']}% rain chance on {rainiest['day']}", f"{summary['lowest_day']} is the lowest-performing weekday in the sales history"], "confidence": "medium", "success_metric": "Sales versus the usual comparable weekday"},
+        third,
     ]
 
 
-def claude_recommendations(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+def recommendation_context(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "business": {"type": profile["type"], "location": profile["location"], "goal": profile["goal"]},
+        "sales_summary": summary, "recent_sales": profile["sales"][-14:], "weather": weather,
+        "events": events, "measured_outcomes": outcomes,
+    }
+
+
+def advisor_prompt(context: dict[str, Any]) -> str:
+    return """You are Sidekick, a warm, commercially sharp co-pilot for one small business owner. Analyze only the supplied sales × weather × local-events context and measured past outcomes. Return ONLY JSON with a `recommendations` array of exactly 3 objects. Every object requires: id (slug), priority (2-4 words), icon (event, rain, or spark), title (under 11 words), action (1-2 concrete sentences), why (one sentence citing exact signals), signals (sales/weather/event), impact (2-4 words), evidence (2-3 exact factual strings from context), confidence (high/medium/exploratory), success_metric (one measurable result). Never invent facts. If measured outcomes exist, one recommendation must explicitly learn from one.\n\nCONTEXT:\n""" + json.dumps(context, separators=(",", ":"))
+
+
+def parse_recommendation_response(text: str) -> list[dict[str, Any]] | None:
+    try:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        parsed = json.loads(match.group(0) if match else text)
+        items = parsed.get("recommendations", [])
+        return items if len(items) == 3 and all(isinstance(item, dict) for item in items) else None
+    except (ValueError, json.JSONDecodeError, AttributeError):
+        return None
+
+
+def normalize_recommendations(items: list[dict[str, Any]] | None, defaults: list[str]) -> list[dict[str, Any]] | None:
+    if not items or len(items) != 3:
+        return None
+    normalized = []
+    for index, item in enumerate(items):
+        if not item.get("title") or not item.get("action") or not item.get("why"):
+            return None
+        signals = [signal for signal in item.get("signals", []) if signal in {"sales", "weather", "event"}]
+        evidence = [str(value)[:220] for value in item.get("evidence", []) if str(value).strip()][:3]
+        while len(evidence) < 2:
+            evidence.append(defaults[(index + len(evidence)) % len(defaults)])
+        identifier = re.sub(r"[^a-z0-9]+", "-", str(item.get("id") or item["title"]).lower()).strip("-")
+        normalized.append({
+            "id": identifier[:80] or f"recommendation-{index + 1}", "priority": str(item.get("priority", "Worth doing"))[:40],
+            "icon": item.get("icon") if item.get("icon") in {"event", "rain", "spark"} else "spark",
+            "title": str(item["title"])[:180], "action": str(item["action"])[:900], "why": str(item["why"])[:500],
+            "signals": signals or ["sales"], "impact": str(item.get("impact", "Measurable"))[:40], "evidence": evidence,
+            "confidence": item.get("confidence") if item.get("confidence") in {"high", "medium", "exploratory"} else "medium",
+            "success_metric": str(item.get("success_metric", "Sales versus the comparable-day baseline"))[:240],
+        })
+    return normalized
+
+
+def anthropic_recommendations(context: dict[str, Any]) -> list[dict[str, Any]] | None:
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return None
-    context = {"business": {key: profile[key] for key in ("name", "type", "location", "goal")}, "sales_summary": summary, "last_14_sales": profile["sales"][-14:], "weather": weather, "events": events}
-    prompt = """You are Sidekick, a warm and commercially sharp co-pilot for one small business owner. Analyze the supplied sales × weather × local events context. Return ONLY a JSON object with a `recommendations` array of exactly 3 objects. Each object must have: id (slug), priority (2-4 words), icon (event, rain, or spark), title (under 11 words), action (1-2 concrete sentences with timing/quantity/offer when justified), why (one sentence naming the exact signals), signals (array chosen from sales/weather/event), impact (2-4 words). Avoid generic advice and never invent facts beyond the context. Phrase plans as suggestions, not certainties.\n\nCONTEXT:\n""" + json.dumps(context, separators=(",", ":"))
-    payload = {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"), "max_tokens": 1200, "temperature": 0.3, "messages": [{"role": "user", "content": prompt}]}
+    payload = {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"), "max_tokens": 1500, "temperature": 0.3, "messages": [{"role": "user", "content": advisor_prompt(context)}]}
     try:
         response = post_json("https://api.anthropic.com/v1/messages", payload, headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"})
         text = "".join(block.get("text", "") for block in response.get("content", []) if block.get("type") == "text")
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        parsed = json.loads(match.group(0) if match else text)
-        recommendations = parsed.get("recommendations", [])
-        if len(recommendations) == 3 and all(isinstance(item, dict) for item in recommendations):
-            return recommendations
+        return parse_recommendation_response(text)
     except (HTTPError, URLError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
-        print(f"[sidekick] Claude unavailable; using local advisor: {exc}")
+        print(f"[sidekick] Anthropic unavailable: {exc}")
     return None
+
+
+def gemini_recommendations(context: dict[str, Any]) -> list[dict[str, Any]] | None:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    fields = ("id", "priority", "icon", "title", "action", "why", "signals", "impact", "evidence", "confidence", "success_metric")
+    properties = {
+        key: {"type": "array", "items": {"type": "string"}} if key in {"signals", "evidence"} else {"type": "string"}
+        for key in fields
+    }
+    schema = {
+        "type": "object",
+        "properties": {
+            "recommendations": {
+                "type": "array", "minItems": 3, "maxItems": 3,
+                "items": {"type": "object", "properties": properties, "required": list(fields)},
+            }
+        },
+        "required": ["recommendations"],
+    }
+    payload = {"contents": [{"role": "user", "parts": [{"text": advisor_prompt(context)}]}], "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json", "responseSchema": schema}}
+    try:
+        response = post_json(f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model)}:generateContent?key={quote(api_key)}", payload, headers={})
+        text = response["candidates"][0]["content"]["parts"][0]["text"]
+        return parse_recommendation_response(text)
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as exc:
+        print(f"[sidekick] Gemini unavailable: {exc}")
+    return None
+
+
+def advisor_recommendations(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
+    context = recommendation_context(profile, summary, weather, events, outcomes)
+    defaults = evidence_defaults(summary, weather, events)
+    provider = os.environ.get("AI_PROVIDER", "auto").strip().lower()
+    candidates = []
+    if provider in {"auto", "anthropic"}:
+        candidates.append(("anthropic", anthropic_recommendations))
+    if provider in {"auto", "gemini"}:
+        candidates.append(("gemini", gemini_recommendations))
+    for name, implementation in candidates:
+        normalized = normalize_recommendations(implementation(context), defaults)
+        if normalized:
+            return normalized, name
+    local = fallback_recommendations(profile, summary, weather, events, outcomes)
+    return normalize_recommendations(local, defaults) or local, "local"
 
 
 def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
     profile = clean_profile(payload)
     summary = summarize_sales(profile["sales"])
+    sidekick_store = store()
+    sidekick_store.save_profile(profile)
+    outcomes = sidekick_store.recent_outcomes(profile["name"])
     live_weather = True
     try:
         place = geocode(profile["location"])
@@ -315,54 +430,110 @@ def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
         place = {"city": profile["location"].split(",")[0], "country_code": "US", "latitude": 45.52, "longitude": -122.68}
         weather, live_weather = fallback_weather(), False
     events, events_source = discover_events(place)
-    recommendations = claude_recommendations(profile, summary, weather, events)
-    advisor_mode = "claude" if recommendations else "demo"
-    recommendations = recommendations or fallback_recommendations(profile, summary, weather, events)
-    generated_at = datetime.now(timezone.utc).isoformat()
+    recommendations, advisor_mode = advisor_recommendations(profile, summary, weather, events, outcomes)
+    generated_at = now_iso()
+    recent_win = next((item for item in outcomes if item.get("outcome") and item["outcome"]["lift_amount"] > 0), outcomes[0] if outcomes else None)
     result = {
         "generated_at": generated_at, "live_weather": live_weather, "location": place,
-        "weather": weather, "events": events, "events_source": events_source,
+        "weather": weather, "events": events, "events_source": events_source, "events_updated_at": generated_at,
         "sales": profile["sales"], "sales_summary": summary,
         "recommendations": recommendations, "advisor_mode": advisor_mode,
+        "recent_win": recent_win, "learning_count": len(outcomes),
     }
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.execute("INSERT OR REPLACE INTO profiles(name, payload, updated_at) VALUES (?, ?, ?)", (profile["name"], json.dumps(profile), generated_at))
-        connection.execute("INSERT INTO briefings(profile_name, generated_at, advisor_mode, recommendations) VALUES (?, ?, ?, ?)", (profile["name"], generated_at, advisor_mode, json.dumps(recommendations)))
+    sidekick_store.save_briefing(profile["name"], advisor_mode, recommendations, generated_at)
     return result
 
 
 def briefing_history(profile_name: str) -> list[dict[str, Any]]:
-    with sqlite3.connect(DB_PATH) as connection:
-        rows = connection.execute("SELECT generated_at, advisor_mode, recommendations FROM briefings WHERE profile_name = ? ORDER BY id DESC LIMIT 20", (profile_name,)).fetchall()
-    return [{"generated_at": generated, "advisor_mode": mode, "recommendations": json.loads(recommendations)} for generated, mode, recommendations in rows]
+    return store().history(profile_name)
+
+
+def demo_profile() -> dict[str, Any]:
+    amounts = [1180, 1260, 1135, 1320, 1580, 1810, 1475, 1210, 1295, 1370, 1415, 1680, 1940, 1525]
+    today = date.today()
+    sales = [{"date": (today - timedelta(days=14 - index)).isoformat(), "amount": amount} for index, amount in enumerate(amounts)]
+    return {
+        "name": "Juniper Coffee Co.", "type": "Independent coffee shop", "location": "Portland, OR",
+        "goal": "Grow weekday foot traffic", "sales": sales,
+    }
+
+
+def reset_demo_story() -> dict[str, Any]:
+    profile = demo_profile()
+    sidekick_store = store()
+    sidekick_store.reset_business(profile["name"])
+    sidekick_store.save_profile(profile)
+    scheduled_for = (date.today() - timedelta(days=1)).isoformat()
+    recommendation = {
+        "id": "rainy-day-double-points", "title": "Make rainy mornings feel intentional",
+        "action": "Run Rainy Day Double Points from 7–10 AM and feature the maple oat latte at the register.",
+        "why": "Rain was forecast on a historically soft weekday.", "signals": ["weather", "sales"],
+        "evidence": ["Rain was forecast during the morning commute", "The comparable weekday trailed the shop’s daily average"],
+        "confidence": "medium", "success_metric": "Sales versus the comparable-day baseline",
+    }
+    action = sidekick_store.create_action({"profile_name": profile["name"], "recommendation": recommendation, "scheduled_for": scheduled_for, "is_demo": True})
+    baseline = sidekick_store.baseline_for(profile["name"], scheduled_for)
+    completed = sidekick_store.record_outcome(action["id"], {"observed_sales": baseline + 210, "helped": "yes", "note": "Morning regulars responded well; keep the offer limited to rainy commutes."})
+    briefing = create_briefing(profile)
+    return {"profile": profile, "seeded_action": completed, "briefing": briefing, "demo_data": True}
 
 
 class SidekickHandler(BaseHTTPRequestHandler):
-    server_version = "SidekickAI/1.0"
+    server_version = "SidekickAI/2.0"
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
-            self.send_json(200, {"status": "ok", "service": "sidekick", "version": "1.0"})
+            self.send_json(200, {"status": "ok", "service": "sidekick", "version": "2.0", "ai_provider": os.environ.get("AI_PROVIDER", "auto")})
         elif parsed.path == "/api/history":
             business = parse_qs(parsed.query).get("business", [""])[0][:120]
             self.send_json(200, {"history": briefing_history(business)})
+        elif parsed.path == "/api/actions":
+            business = parse_qs(parsed.query).get("business", [""])[0][:120]
+            self.send_json(200, {"actions": store().list_actions(business)})
         else:
             self.serve_frontend(parsed.path)
 
     def do_POST(self) -> None:  # noqa: N802
-        if urlparse(self.path).path != "/api/briefing":
-            self.send_json(404, {"error": "Not found"})
-            return
+        path = urlparse(self.path).path
         try:
-            length = min(int(self.headers.get("Content-Length", "0")), 2_000_000)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-            self.send_json(200, create_briefing(payload))
+            payload = self.read_json()
+            if path == "/api/briefing":
+                self.send_json(200, create_briefing(payload))
+            elif path == "/api/actions":
+                self.send_json(201, store().create_action(payload))
+            elif path == "/api/demo/reset":
+                self.send_json(200, reset_demo_story())
+            elif match := re.fullmatch(r"/api/actions/(\d+)/outcome", path):
+                self.send_json(200, store().record_outcome(int(match.group(1)), payload))
+            else:
+                self.send_json(404, {"error": "Not found"})
         except (ValueError, json.JSONDecodeError) as exc:
             self.send_json(400, {"error": str(exc)})
         except Exception as exc:  # keep demo server responsive and surface useful error
             print(f"[sidekick] Unhandled briefing error: {exc}")
             self.send_json(500, {"error": "Sidekick hit a temporary problem. Please refresh the briefing."})
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        try:
+            payload = self.read_json()
+            match = re.fullmatch(r"/api/actions/(\d+)", path)
+            if not match:
+                self.send_json(404, {"error": "Not found"}); return
+            self.send_json(200, store().update_action(int(match.group(1)), str(payload.get("status", ""))))
+        except (ValueError, json.JSONDecodeError) as exc:
+            self.send_json(400, {"error": str(exc)})
+        except Exception as exc:
+            print(f"[sidekick] Unhandled action error: {exc}")
+            self.send_json(500, {"error": "Sidekick could not update that action."})
+
+    def read_json(self) -> dict[str, Any]:
+        length = min(int(self.headers.get("Content-Length", "0")), 2_000_000)
+        payload = json.loads(self.rfile.read(length) or b"{}")
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be a JSON object.")
+        return payload
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204); self.send_cors_headers(); self.end_headers()
@@ -372,7 +543,7 @@ class SidekickHandler(BaseHTTPRequestHandler):
         if origin in {"http://localhost:5173", "http://127.0.0.1:5173"}:
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 
     def send_json(self, status: int, payload: object) -> None:
         body = json.dumps(payload).encode("utf-8")
