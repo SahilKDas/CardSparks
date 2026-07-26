@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@1,9..144,600&display=swap');
+
+:root {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #17332c;
+  background: #f6f4ed;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+.shell { min-height: 100vh; }
+.topbar { height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(20px, 5vw, 72px); border-bottom: 1px solid #dcd9cf; }
+.brand { display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; font-size: 20px; font-weight: 600; }
+.brand strong { color: #e35f42; }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; color: white; background: #17332c; font-family: 'Fraunces'; font-size: 19px; }
+.status { color: #577069; font-size: 13px; }
+.status i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #64a87b; }
+.hero { max-width: 1050px; margin: 0 auto; padding: 13vh 24px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 700; color: #e35f42; }
+h1 { margin: 16px 0 24px; font-size: clamp(48px, 8vw, 92px); line-height: .98; letter-spacing: -.055em; }
+h1 em { font-family: 'Fraunces', serif; font-weight: 600; color: #e35f42; }
+.hero > p:last-child { max-width: 580px; color: #63716d; font-size: 18px; line-height: 1.6; }
+

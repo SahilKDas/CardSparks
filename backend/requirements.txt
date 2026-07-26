@@ -1,0 +1,1 @@
+# Sidekick's backend intentionally uses only Python's standard library.
