@@ -98,7 +98,7 @@ function App() {
       <main className="main-content">
         <MobileHeader profile={profile} open={() => setMobileNav(true)} />
         {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} />}
-        {view === 'history' && <HistoryView />}
+        {view === 'history' && <HistoryView profile={profile} />}
         {view === 'settings' && <SettingsView profile={profile} reset={reset} />}
       </main>
     </div>
@@ -227,7 +227,18 @@ function EventsPanel({ events, source }) {
 
 function BriefingSkeleton() { return <div className="skeleton"><LoaderCircle className="spin" /><h2>Connecting the dots…</h2><p>Reading sales, weather, and what’s happening nearby.</p></div> }
 
-function HistoryView() { return <div className="simple-page"><p className="eyebrow">Past advice</p><h1>Your sidekick’s notebook</h1><p>Recommendations you generate are saved here, so you can return to the moves that worked.</p><div className="empty-state"><History /><h2>Your first briefing is today</h2><p>Refresh the morning briefing tomorrow to start building your history.</p></div></div> }
+function HistoryView({ profile }) {
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    fetch(`${API}/api/history?business=${encodeURIComponent(profile.name)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => setHistory(data.history || []))
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false))
+  }, [profile.name])
+  return <div className="simple-page history-page"><p className="eyebrow">Past advice</p><h1>Your sidekick’s notebook</h1><p>Every generated briefing is saved here, so you can return to the moves that worked.</p>{loading ? <div className="history-loading"><LoaderCircle className="spin" /> Opening the notebook…</div> : history.length ? <div className="history-list">{history.map((entry, index) => <article key={`${entry.generated_at}-${index}`}><header><div><strong>{new Date(entry.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong><small>{new Date(entry.generated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</small></div><span>{entry.advisor_mode === 'claude' ? 'Claude advisor' : 'Demo advisor'}</span></header>{entry.recommendations.map((item) => <div className="history-rec" key={item.id}><Check /><div><strong>{item.title}</strong><p>{item.action}</p></div></div>)}</article>)}</div> : <div className="empty-state"><History /><h2>Your first briefing is today</h2><p>Return to the morning briefing and tap refresh to start building your history.</p></div>}</div>
+}
 
 function SettingsView({ profile, reset }) { return <div className="simple-page"><p className="eyebrow">Business profile</p><h1>{profile.name}</h1><p>The context your sidekick uses to tailor every recommendation.</p><div className="settings-card"><div><small>Business type</small><strong>{profile.type}</strong></div><div><small>Location</small><strong>{profile.location}</strong></div><div><small>Current focus</small><strong>{profile.goal}</strong></div><div><small>Sales days connected</small><strong>{profile.sales.length} days</strong></div><button className="secondary-button" onClick={reset}>Start over with another business</button></div></div> }
 
