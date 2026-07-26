@@ -401,7 +401,7 @@ def gemini_recommendations(context: dict[str, Any]) -> list[dict[str, Any]] | No
 def advisor_recommendations(profile: dict[str, Any], summary: dict[str, Any], weather: dict[str, Any], events: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
     context = recommendation_context(profile, summary, weather, events, outcomes)
     defaults = evidence_defaults(summary, weather, events)
-    provider = os.environ.get("AI_PROVIDER", "auto").strip().lower()
+    provider = "local" if os.environ.get("SIDEKICK_OFFLINE", "").lower() in {"1", "true", "yes"} else os.environ.get("AI_PROVIDER", "auto").strip().lower()
     candidates = []
     if provider in {"auto", "anthropic"}:
         candidates.append(("anthropic", anthropic_recommendations))
@@ -421,15 +421,21 @@ def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
     sidekick_store = store()
     sidekick_store.save_profile(profile)
     outcomes = sidekick_store.recent_outcomes(profile["name"])
-    live_weather = True
-    try:
-        place = geocode(profile["location"])
-        weather = weather_for(place)
-    except (HTTPError, URLError, TimeoutError, ValueError, KeyError) as exc:
-        print(f"[sidekick] Live weather unavailable; using demo weather: {exc}")
+    offline = os.environ.get("SIDEKICK_OFFLINE", "").lower() in {"1", "true", "yes"}
+    live_weather = not offline
+    if offline:
         place = {"city": profile["location"].split(",")[0], "country_code": "US", "latitude": 45.52, "longitude": -122.68}
         weather, live_weather = fallback_weather(), False
-    events, events_source = discover_events(place)
+        events, events_source = curated_demo_events(place["city"]), "Curated demo events · offline recording mode"
+    else:
+        try:
+            place = geocode(profile["location"])
+            weather = weather_for(place)
+        except (HTTPError, URLError, TimeoutError, ValueError, KeyError) as exc:
+            print(f"[sidekick] Live weather unavailable; using demo weather: {exc}")
+            place = {"city": profile["location"].split(",")[0], "country_code": "US", "latitude": 45.52, "longitude": -122.68}
+            weather, live_weather = fallback_weather(), False
+        events, events_source = discover_events(place)
     recommendations, advisor_mode = advisor_recommendations(profile, summary, weather, events, outcomes)
     generated_at = now_iso()
     recent_win = next((item for item in outcomes if item.get("outcome") and item["outcome"]["lift_amount"] > 0), outcomes[0] if outcomes else None)
@@ -484,7 +490,7 @@ class SidekickHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
-            self.send_json(200, {"status": "ok", "service": "sidekick", "version": "2.0", "ai_provider": os.environ.get("AI_PROVIDER", "auto")})
+            self.send_json(200, {"status": "ok", "service": "sidekick", "version": "2.0", "ai_provider": os.environ.get("AI_PROVIDER", "auto"), "offline": os.environ.get("SIDEKICK_OFFLINE", "").lower() in {"1", "true", "yes"}})
         elif parsed.path == "/api/history":
             business = parse_qs(parsed.query).get("business", [""])[0][:120]
             self.send_json(200, {"history": briefing_history(business)})

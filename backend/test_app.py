@@ -3,7 +3,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import backend.app as sidekick
@@ -111,6 +111,50 @@ class SidekickTests(unittest.TestCase):
         self.assertEqual(len(result), 3)
         self.assertTrue(all(len(item["evidence"]) == 2 for item in result))
         self.assertTrue(all(item["confidence"] == "medium" for item in result))
+
+    @patch("backend.app.gemini_recommendations")
+    @patch("backend.app.anthropic_recommendations", return_value=None)
+    def test_auto_provider_falls_through_to_free_gemini(self, _anthropic, gemini) -> None:
+        raw = [{"title": f"Move {i}", "action": "Do one concrete thing.", "why": "Sales and weather shifted.", "signals": ["sales", "weather"], "evidence": ["Sales trend +4%", "Rain chance 60%"]} for i in range(3)]
+        gemini.return_value = raw
+        with patch.dict(sidekick.os.environ, {"AI_PROVIDER": "auto"}, clear=False):
+            items, provider = sidekick.advisor_recommendations(PROFILE, sidekick.summarize_sales(SALES), sidekick.fallback_weather(), sidekick.curated_demo_events("Portland"), [])
+        self.assertEqual(provider, "gemini")
+        self.assertEqual(len(items), 3)
+        gemini.assert_called_once()
+
+    @patch("backend.app.advisor_recommendations")
+    @patch("backend.app.discover_events")
+    @patch("backend.app.geocode", side_effect=URLError("offline"))
+    def test_partial_outage_stays_actionable_and_labeled(self, _geocode, mock_events, mock_advisor) -> None:
+        mock_events.return_value = (sidekick.curated_demo_events("Portland"), "Curated demo events")
+        mock_advisor.side_effect = self.local_advisor
+        _, result = self.api("/api/briefing", "POST", PROFILE)
+        self.assertFalse(result["live_weather"])
+        self.assertIn("demo", result["events_source"].lower())
+        self.assertEqual(len(result["recommendations"]), 3)
+
+    @patch("backend.app.discover_events")
+    @patch("backend.app.geocode")
+    def test_explicit_offline_mode_skips_external_signals(self, geocode, discover_events) -> None:
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            _, result = self.api("/api/briefing", "POST", PROFILE)
+        geocode.assert_not_called()
+        discover_events.assert_not_called()
+        self.assertFalse(result["live_weather"])
+        self.assertEqual(result["advisor_mode"], "local")
+        self.assertIn("offline recording mode", result["events_source"])
+
+    @patch("backend.app.holiday_events", return_value=[])
+    @patch("backend.app.ticketmaster_events")
+    def test_event_results_are_cached(self, ticketmaster, _holidays) -> None:
+        ticketmaster.return_value = [{"name": "Live show", "date": "Fri, Jul 31", "time": "7 PM", "distance": "1 mi", "category": "Music", "opportunity": "high"}]
+        place = {"latitude": 45.52, "longitude": -122.68, "city": "Portland", "country_code": "US"}
+        first = sidekick.discover_events(place)
+        second = sidekick.discover_events(place)
+        self.assertEqual(first[0], second[0])
+        self.assertIn("cached", second[1])
+        ticketmaster.assert_called_once()
 
     def test_invalid_profile_returns_400(self) -> None:
         request = Request(f"{self.base}/api/briefing", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
