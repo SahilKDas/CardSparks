@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowRight, BarChart3, CalendarDays, Check, ChevronRight, CloudRain,
-  ClipboardCheck, Coffee, Compass, History, Lightbulb, LoaderCircle, MapPin, Menu,
-  Plus, RefreshCw, RotateCcw, Settings, Sparkles, Sun, Target, ThumbsDown,
-  ThumbsUp, TrendingUp, Upload, X,
+  ArrowRight, BarChart3, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight,
+  CloudRain, ClipboardCheck, Clock3, Coffee, Compass, Copy, History, Lightbulb,
+  LoaderCircle, MapPin, Megaphone, Menu, PackageCheck, Plus, Printer, RefreshCw,
+  RotateCcw, Settings, Sparkles, Sun, Target, ThumbsDown, ThumbsUp, TrendingUp,
+  Upload, X,
 } from 'lucide-react'
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -146,6 +147,17 @@ function App() {
     return updated
   }
 
+  async function buildLaunchKit(id, refresh = false) {
+    const response = await fetch(`${API}/api/actions/${id}/launch-kit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh }),
+    })
+    if (!response.ok) throw new Error('Could not build Launch Kit')
+    const launchKit = await response.json()
+    setActions((current) => current.map((item) => item.id === id ? { ...item, has_launch_kit: true, launch_kit: launchKit } : item))
+    flash(refresh ? 'Launch Kit refreshed' : 'Launch Kit ready')
+    return launchKit
+  }
+
   useEffect(() => { if (profile) { loadBriefing(profile); loadActions(profile) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function finishOnboarding(nextProfile) {
@@ -169,7 +181,7 @@ function App() {
         <MobileHeader profile={profile} open={() => setMobileNav(true)} />
         {notice && <div className="toast"><Check /> {notice}</div>}
         {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} addToPlan={addToPlan} plannedIds={new Set(actions.filter((item) => item.status === 'planned').map((item) => item.recommendation_id))} openPlaybook={() => setView('playbook')} />}
-        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} />}
+        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} buildLaunchKit={buildLaunchKit} />}
         {view === 'history' && <HistoryView profile={profile} />}
         {view === 'settings' && <SettingsView profile={profile} reset={reset} resetDemo={startDemo} />}
       </main>
@@ -310,12 +322,113 @@ function EventsPanel({ events, source, updatedAt }) {
 
 function BriefingSkeleton() { return <div className="skeleton"><LoaderCircle className="spin" /><h2>Connecting the dots…</h2><p>Reading sales, weather, and what’s happening nearby.</p></div> }
 
-function PlaybookView({ actions, updateAction, recordOutcome }) {
+function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit }) {
   const [selected, setSelected] = useState(null)
+  const [studioAction, setStudioAction] = useState(null)
+  const [buildingId, setBuildingId] = useState(null)
   const [error, setError] = useState('')
   const active = actions.filter((item) => item.status === 'planned')
   const measured = actions.filter((item) => item.outcome)
-  return <div className="simple-page playbook-page"><p className="eyebrow">From counsel to action</p><h1>Today’s Playbook</h1><p>Your clearest next moves, with a result to watch and a learning loop when the day is done.</p><div className="playbook-summary"><div><ClipboardCheck /><span><strong>{active.length}</strong><small>planned moves</small></span></div><div><TrendingUp /><span><strong>{measured.length}</strong><small>measured results</small></span></div><div><Sparkles /><span><strong>{measured.filter((item) => item.outcome.lift_amount > 0).length}</strong><small>proven wins</small></span></div></div>{error && <p className="form-error">{error}</p>}{actions.length ? <div className="playbook-list">{actions.map((item) => <article className={`playbook-card status-${item.status}`} key={item.id}><header><span className={`status-pill ${item.status}`}>{item.outcome ? 'measured' : item.status}</span>{item.is_demo && <span className="demo-data-pill">Demo data</span>}<time>{new Date(`${item.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</time></header><h2>{item.title}</h2><p>{item.action}</p><div className="metric-line"><Target /><span><small>Success looks like</small><strong>{item.success_metric}</strong></span></div>{item.outcome ? <div className={`outcome-result ${item.outcome.lift_amount >= 0 ? 'positive' : 'negative'}`}><TrendingUp /><div><span><strong>{item.outcome.lift_amount >= 0 ? '+' : '−'}${Math.abs(item.outcome.lift_amount).toLocaleString()}</strong> vs baseline</span><small>${item.outcome.observed_sales.toLocaleString()} observed · ${item.outcome.baseline_sales.toLocaleString()} usual {item.outcome.note && `· “${item.outcome.note}”`}</small></div></div> : <div className="playbook-actions">{item.status === 'planned' ? <><button className="primary-button" onClick={() => updateAction(item.id, 'completed').catch(() => setError('Could not mark that action done.'))}><Check /> Mark as done</button><button className="quiet-button" onClick={() => updateAction(item.id, 'dismissed').catch(() => setError('Could not dismiss that action.'))}><X /> Dismiss</button></> : item.status === 'completed' ? <button className="primary-button" onClick={() => setSelected(item)}><TrendingUp /> Log the result</button> : null}</div>}</article>)}</div> : <div className="empty-state"><ClipboardCheck /><h2>Your Playbook is ready for its first move</h2><p>Open the morning briefing and put one recommendation into your plan.</p></div>}{selected && <OutcomeModal action={selected} close={() => setSelected(null)} save={async (values) => { await recordOutcome(selected.id, values); setSelected(null) }} />}</div>
+  async function openOrBuildKit(item) {
+    setError('')
+    if (item.launch_kit) { setStudioAction(item); return }
+    setBuildingId(item.id)
+    try {
+      const launchKit = await buildLaunchKit(item.id)
+      setStudioAction({ ...item, has_launch_kit: true, launch_kit: launchKit })
+    } catch { setError('Sidekick could not build that kit right now. Your planned action is still safe.') }
+    finally { setBuildingId(null) }
+  }
+  return <div className="simple-page playbook-page">
+    <p className="eyebrow">From counsel to action</p><h1>Today’s Playbook</h1><p>Your clearest next moves, with a ready-to-use campaign kit and a learning loop when the day is done.</p>
+    <div className="playbook-summary"><div><ClipboardCheck /><span><strong>{active.length}</strong><small>planned moves</small></span></div><div><PackageCheck /><span><strong>{actions.filter((item) => item.has_launch_kit).length}</strong><small>launch kits ready</small></span></div><div><Sparkles /><span><strong>{measured.filter((item) => item.outcome.lift_amount > 0).length}</strong><small>proven wins</small></span></div></div>
+    {error && <p className="form-error">{error}</p>}
+    {actions.length ? <div className="playbook-list">{actions.map((item) => <article className={`playbook-card status-${item.status}`} key={item.id}>
+      <header><span className={`status-pill ${item.status}`}>{item.outcome ? 'measured' : item.status}</span>{item.has_launch_kit && <span className="kit-ready-pill"><CheckCircle2 /> Kit ready</span>}{item.is_demo && <span className="demo-data-pill">Demo data</span>}<time>{new Date(`${item.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</time></header>
+      <h2>{item.title}</h2><p>{item.action}</p><div className="metric-line"><Target /><span><small>Success looks like</small><strong>{item.success_metric}</strong></span></div>
+      {item.outcome ? <div className={`outcome-result ${item.outcome.lift_amount >= 0 ? 'positive' : 'negative'}`}><TrendingUp /><div><span><strong>{item.outcome.lift_amount >= 0 ? '+' : '−'}${Math.abs(item.outcome.lift_amount).toLocaleString()}</strong> vs baseline</span><small>${item.outcome.observed_sales.toLocaleString()} observed · ${item.outcome.baseline_sales.toLocaleString()} usual {item.outcome.note && `· “${item.outcome.note}”`}</small></div></div> : <div className="playbook-actions">{item.status === 'planned' ? <>
+        <button className={`launch-kit-button ${item.has_launch_kit ? 'ready' : ''}`} onClick={() => openOrBuildKit(item)} disabled={buildingId === item.id}>{buildingId === item.id ? <LoaderCircle className="spin" /> : item.has_launch_kit ? <CheckCircle2 /> : <Megaphone />} {buildingId === item.id ? 'Building your kit…' : item.has_launch_kit ? 'Open Launch Kit' : 'Build Launch Kit'}</button>
+        <button className="primary-button" onClick={() => updateAction(item.id, 'completed').catch(() => setError('Could not mark that action done.'))}><Check /> Mark as done</button><button className="quiet-button" onClick={() => updateAction(item.id, 'dismissed').catch(() => setError('Could not dismiss that action.'))}><X /> Dismiss</button>
+      </> : item.status === 'completed' ? <button className="primary-button" onClick={() => setSelected(item)}><TrendingUp /> Log the result</button> : null}</div>}
+    </article>)}</div> : <div className="empty-state"><ClipboardCheck /><h2>Your Playbook is ready for its first move</h2><p>Open the morning briefing and put one recommendation into your plan.</p></div>}
+    {selected && <OutcomeModal action={selected} close={() => setSelected(null)} save={async (values) => { await recordOutcome(selected.id, values); setSelected(null) }} />}
+    {studioAction?.launch_kit && <LaunchKitStudio action={studioAction} kit={studioAction.launch_kit} close={() => setStudioAction(null)} refresh={async () => { const launchKit = await buildLaunchKit(studioAction.id, true); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} />}
+  </div>
+}
+
+function escapeCalendarText(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
+}
+
+function calendarTimestamp(value) {
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${value.getFullYear()}${pad(value.getMonth() + 1)}${pad(value.getDate())}T${pad(value.getHours())}${pad(value.getMinutes())}00`
+}
+
+export function buildCalendarFile(kit) {
+  const start = new Date(`${kit.schedule.date}T${kit.schedule.time}:00`)
+  const end = new Date(start.getTime() + 30 * 60 * 1000)
+  const description = `Audience: ${kit.audience}\nMeasure: ${kit.measurement.metric}\nNothing is published or sent automatically.`
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sidekick AI//Launch Kit//EN', 'BEGIN:VEVENT', `UID:sidekick-action-${kit.action_id}@sidekick.local`, `DTSTAMP:${calendarTimestamp(new Date())}`, `DTSTART:${calendarTimestamp(start)}`, `DTEND:${calendarTimestamp(end)}`, `SUMMARY:${escapeCalendarText(kit.offer_name)}`, `DESCRIPTION:${escapeCalendarText(description)}`, 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n')
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
+  const textarea = document.createElement('textarea')
+  textarea.value = value; textarea.style.position = 'fixed'; textarea.style.opacity = '0'
+  document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove()
+}
+
+export function LaunchKitStudio({ action, kit, close, refresh }) {
+  const [copied, setCopied] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    const handleKey = (event) => event.key === 'Escape' && close()
+    window.addEventListener('keydown', handleKey)
+    document.body.classList.add('launch-kit-open')
+    return () => { window.removeEventListener('keydown', handleKey); document.body.classList.remove('launch-kit-open') }
+  }, [close])
+
+  async function copy(label, value) {
+    try { await copyText(value); setCopied(label); window.setTimeout(() => setCopied(''), 1800) }
+    catch { setError('Copy is blocked in this browser. Select the text manually.') }
+  }
+  function downloadCalendar() {
+    const blob = new Blob([buildCalendarFile(kit)], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url; anchor.download = `${kit.offer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'sidekick-launch-kit'}.ics`
+    document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url)
+  }
+  async function regenerate() {
+    setRefreshing(true); setError('')
+    try { await refresh() } catch { setError('Sidekick kept your current kit because regeneration was unavailable.') }
+    finally { setRefreshing(false) }
+  }
+  const providerName = { local: 'Explainable local generator', gemini: 'Gemini', anthropic: 'Claude' }[kit.provider] || kit.provider
+  const scheduled = new Date(`${kit.schedule.date}T${kit.schedule.time}:00`)
+  return <div className="launch-studio-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+    <section className="launch-studio" role="dialog" aria-modal="true" aria-labelledby="launch-kit-title">
+      <header className="studio-header"><div><span className="studio-mark"><Megaphone /></span><div><p className="eyebrow">Launch Kit Studio</p><h2 id="launch-kit-title">{kit.offer_name}</h2><p>Everything needed to turn this Playbook move into action.</p></div></div><button className="modal-close" onClick={close} aria-label="Close Launch Kit Studio"><X /></button></header>
+      <div className="studio-trust"><span><Sparkles /> Generated by {providerName}</span>{action.is_demo && <span className="demo-data-pill">Demo action context</span>}<span>Copy only · nothing is sent or published</span></div>
+      {error && <p className="form-error">{error}</p>}
+      <div className="studio-grid">
+        <section className="studio-panel copy-panel"><div className="panel-heading"><div><Coffee /><span><small>Customer-ready copy</small><strong>Phone preview</strong></span></div><span>{kit.audience}</span></div>
+          <div className="phone-preview"><div className="phone-speaker" /><div className="social-preview"><span className="mini-brand">J</span><div><strong>{action.profile_name}</strong><small>Post preview · not published</small></div></div><p>{kit.customer_copy.social}</p><div className="social-image"><span>{kit.customer_copy.sign_headline}</span><small>{kit.customer_copy.sign_body}</small></div></div>
+          <div className="copy-row"><div><small>Social caption</small><p>{kit.customer_copy.social}</p></div><button onClick={() => copy('social', kit.customer_copy.social)}><Copy /> {copied === 'social' ? 'Copied' : 'Copy'}</button></div>
+          <div className="copy-row sms-row"><div><small>SMS · {kit.customer_copy.sms.length}/160</small><p>{kit.customer_copy.sms}</p></div><button onClick={() => copy('sms', kit.customer_copy.sms)}><Copy /> {copied === 'sms' ? 'Copied' : 'Copy'}</button></div>
+        </section>
+        <section className="studio-panel sign-panel"><div className="panel-heading"><div><Printer /><span><small>Sidewalk sign</small><strong>Print-ready preview</strong></span></div><button onClick={() => window.print()}><Printer /> Print sign</button></div>
+          <div className="launch-sign"><div className="sign-spark">✦</div><small>{action.profile_name}</small><h3>{kit.customer_copy.sign_headline}</h3><p>{kit.customer_copy.sign_body}</p><span>YOUR NEIGHBORHOOD SIDEKICK PICK</span></div>
+        </section>
+        <section className="studio-panel operations-panel"><div className="panel-heading"><div><PackageCheck /><span><small>Make it happen</small><strong>Operations checklist</strong></span></div></div><ol>{kit.operations.map((operation, index) => <li key={`${operation.task}-${index}`}><span>{index + 1}</span><div><strong>{operation.task}</strong><small>{operation.timing} · {operation.owner}</small></div></li>)}</ol></section>
+        <section className="studio-panel timing-panel"><div className="panel-heading"><div><Clock3 /><span><small>{kit.schedule.label}</small><strong>{scheduled.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</strong></span></div></div><button className="calendar-button" onClick={downloadCalendar}><CalendarPlus /> Download calendar task</button><p>No calendar account is connected or modified.</p></section>
+        <section className="studio-panel measurement-panel"><div className="panel-heading"><div><Target /><span><small>Measurement plan</small><strong>Know whether it worked</strong></span></div></div><div className="baseline"><small>Comparable-day baseline</small><strong>${Number(kit.measurement.baseline_sales).toLocaleString()}</strong></div><p>{kit.measurement.metric}</p><span>After the day ends, mark the Playbook action done and log observed sales.</span></section>
+      </div>
+      <footer className="studio-footer"><p><CheckCircle2 /> Your action stays planned until you mark it done.</p><button className="quiet-button" onClick={regenerate} disabled={refreshing}>{refreshing ? <LoaderCircle className="spin" /> : <RefreshCw />} {refreshing ? 'Refreshing…' : 'Regenerate kit'}</button><button className="primary-button" onClick={close}>Back to Playbook</button></footer>
+    </section>
+  </div>
 }
 
 function OutcomeModal({ action, close, save }) {
