@@ -638,9 +638,17 @@ function GuidedJudgeTour({ step, index, editing, approved, onNext, onBack, onExi
     let observer = null
     const locate = () => {
       const target = document.querySelector(`[data-tour-id="${targetId}"]`)
-      if (!target) { setTargetMissing(true); return false }
-      highlighted = target
-      target.classList.add('tour-highlight')
+      if (!target) {
+        highlighted?.classList.remove('tour-highlight')
+        highlighted = null
+        setTargetMissing(true)
+        return false
+      }
+      if (highlighted !== target) {
+        highlighted?.classList.remove('tour-highlight')
+        highlighted = target
+        target.classList.add('tour-highlight')
+      }
       setTargetMissing(false)
       const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
       target.scrollIntoView?.({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' })
@@ -648,13 +656,11 @@ function GuidedJudgeTour({ step, index, editing, approved, onNext, onBack, onExi
         const actionable = target.matches('button, input, textarea, select, a') ? target : target.querySelector('button, input, textarea, select, a')
         actionable?.focus({ preventScroll: true })
       }
-      observer?.disconnect()
       return true
     }
-    if (!locate()) {
-      observer = new MutationObserver(locate)
-      observer.observe(document.body, { childList: true, subtree: true })
-    }
+    observer = new MutationObserver(locate)
+    observer.observe(document.body, { childList: true, subtree: true })
+    locate()
     return () => {
       observer?.disconnect()
       highlighted?.classList.remove('tour-highlight')

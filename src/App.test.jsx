@@ -17,6 +17,13 @@ const launchKit = {
   generated_at: '2026-07-26T12:00:00Z',
 }
 
+const plannedAction = {
+  id: 22, profile_name: 'Juniper Coffee Co.', recommendation_id: 'event-rush',
+  title: 'Turn Friday’s festival crowd into regulars', action: 'Prep more cold brew before the festival.',
+  success_metric: 'Friday sales versus baseline', scheduled_for: '2026-08-01', status: 'planned',
+  is_demo: true, outcome: null, has_launch_kit: false, launch_kit: null,
+}
+
 beforeEach(() => {
   localStorage.clear()
   vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline test'))))
@@ -64,12 +71,6 @@ describe('Sidekick onboarding', () => {
     render(<App />)
     fireEvent.click(screen.getByText('See the coffee shop demo'))
     await screen.findByText('Three moves worth making')
-    const plannedAction = {
-      id: 22, profile_name: 'Juniper Coffee Co.', recommendation_id: 'event-rush',
-      title: 'Turn Friday’s festival crowd into regulars', action: 'Prep more cold brew before the festival.',
-      success_metric: 'Friday sales versus baseline', scheduled_for: '2026-08-01', status: 'planned',
-      is_demo: true, outcome: null, has_launch_kit: false, launch_kit: null,
-    }
     vi.mocked(fetch).mockImplementation((url, options = {}) => {
       if (String(url).endsWith('/api/actions') && options.method === 'POST') return Promise.resolve({ ok: true, json: async () => plannedAction })
       if (String(url).endsWith('/api/actions/22/launch-kit')) return Promise.resolve({ ok: true, json: async () => launchKit })
@@ -85,6 +86,101 @@ describe('Sidekick onboarding', () => {
     await waitFor(() => expect(screen.getByText('Kit ready')).toBeTruthy())
     expect(screen.getByText('Open Launch Kit')).toBeTruthy()
     expect(screen.getByText('planned')).toBeTruthy()
+  })
+})
+
+describe('Guided judge tour', () => {
+  function mockTourRequests() {
+    vi.mocked(fetch).mockImplementation((url, options = {}) => {
+      const path = String(url)
+      if (path.endsWith('/api/demo/reset')) return Promise.reject(new Error('offline demo reset'))
+      if (path.endsWith('/api/actions') && options.method === 'POST') return Promise.resolve({ ok: true, json: async () => plannedAction })
+      if (path.endsWith('/api/actions/22/launch-kit') && options.method === 'POST') return Promise.resolve({ ok: true, json: async () => launchKit })
+      if (path.endsWith('/api/actions/22/launch-kit') && options.method === 'PATCH') return Promise.resolve({ ok: true, json: async () => ({ ...launchKit, owner_approved: true, approved_at: '2026-07-26T12:30:00Z' }) })
+      return Promise.reject(new Error(`unused test route: ${path}`))
+    })
+  }
+
+  it('guides the complete reset-to-owner-approval story through real app events', async () => {
+    mockTourRequests()
+    render(<App />)
+    fireEvent.click(screen.getByText('Start the two-minute judge tour'))
+
+    expect(await screen.findByText('Start with what Sidekick remembers')).toBeTruthy()
+    expect(document.querySelector('[data-tour-id="recent-win"]').classList.contains('tour-highlight')).toBe(true)
+    fireEvent.click(screen.getByText('See the learning loop'))
+
+    expect(await screen.findByRole('dialog', { name: 'Make rainy mornings feel intentional' })).toBeTruthy()
+    expect(screen.getByText('A receipt, not a victory lap')).toBeTruthy()
+    fireEvent.click(screen.getByText('Continue to today’s advice'))
+
+    expect(await screen.findByText('See how the signals become a move')).toBeTruthy()
+    expect(screen.getByText('Waterfront festival is 0.8 mi away on Friday')).toBeTruthy()
+    fireEvent.click(screen.getByText('Turn it into a plan'))
+
+    expect(await screen.findByText('Put the move into the Playbook')).toBeTruthy()
+    fireEvent.click(screen.getAllByText('Put this in my plan')[0])
+    expect(await screen.findByText('Build the campaign in one click')).toBeTruthy()
+    fireEvent.click(screen.getByText('Build Launch Kit'))
+
+    expect(await screen.findByRole('dialog', { name: 'Festival Fuel' })).toBeTruthy()
+    expect(screen.getByText('The advice is now usable')).toBeTruthy()
+    expect(screen.getAllByText('FESTIVALFUEL').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByText('Show owner control'))
+
+    expect(await screen.findByText('AI advises; the owner decides')).toBeTruthy()
+    fireEvent.click(screen.getByText('Edit kit'))
+    expect(await screen.findByText(/Approval—not AI generation/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Owner 1'), { target: { value: 'Maya' } })
+    fireEvent.click(screen.getByText('Save & approve'))
+
+    expect(await screen.findByText('The owner has the final say')).toBeTruthy()
+    expect(screen.getAllByText('Owner approved').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByText('Finish judge tour'))
+    await waitFor(() => expect(screen.queryByLabelText('Guided judge tour')).toBeNull())
+    expect(screen.getByRole('dialog', { name: 'Festival Fuel' })).toBeTruthy()
+  })
+
+  it('exits with Escape, restores focus, and can restart deterministically', async () => {
+    mockTourRequests()
+    render(<App />)
+    fireEvent.click(screen.getByText('Start the two-minute judge tour'))
+    await screen.findByText('Start with what Sidekick remembers')
+    const restart = screen.getByText('Restart judge tour').closest('button')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByLabelText('Guided judge tour')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(restart))
+
+    fireEvent.click(restart)
+    expect(await screen.findByText('Start with what Sidekick remembers')).toBeTruthy()
+    const resetCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/demo/reset'))
+    expect(resetCalls).toHaveLength(2)
+  })
+
+  it('offers a safe continuation if a highlighted target disappears', async () => {
+    mockTourRequests()
+    render(<App />)
+    fireEvent.click(screen.getByText('Start the two-minute judge tour'))
+    await screen.findByText('Start with what Sidekick remembers')
+    fireEvent.click(screen.getByText('See the learning loop'))
+    await screen.findByRole('dialog', { name: 'Make rainy mornings feel intentional' })
+
+    fireEvent.click(screen.getByLabelText('Close Campaign Debrief'))
+    expect(await screen.findByText(/highlighted area is not available/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Continue without highlight'))
+    expect(await screen.findByText('See how the signals become a move')).toBeTruthy()
+  })
+
+  it('never offers the tour inside a non-demo business profile', async () => {
+    localStorage.setItem('sidekick-profile', JSON.stringify({
+      name: 'Oak Street Books', type: 'Retail boutique', location: 'Portland, OR',
+      goal: 'Grow weekday foot traffic', sales: [{ date: '2026-07-01', amount: 100 }, { date: '2026-07-02', amount: 120 }, { date: '2026-07-03', amount: 110 }],
+    }))
+    render(<App />)
+    expect(await screen.findByText(/Good morning, Oak/)).toBeTruthy()
+    expect(screen.queryByText('Restart judge tour')).toBeNull()
+    expect(screen.queryByText('Start the two-minute judge tour')).toBeNull()
   })
 })
 
