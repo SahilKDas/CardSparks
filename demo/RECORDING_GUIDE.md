@@ -1,4 +1,4 @@
-# Sidekick AI — 2:55 Recording Guide
+# Sidekick AI — 2:58 Recording Guide
 
 ## Preflight
 
@@ -23,39 +23,45 @@ Click **See the coffee shop demo**.
 
 > “Sidekick is a morning co-pilot, not another dashboard. This is Juniper Coffee, a neighborhood shop trying to grow weekday traffic.”
 
-### 0:36–1:08 — Show counsel and evidence
+### 0:36–0:58 — Show honest learning
 
-Pause on **Yesterday’s win**, then open **How I connected the dots** on the first recommendation.
+Pause on **Yesterday’s win**, click **See the learning loop**, then open **Campaign Debrief** on the measured action.
 
-> “Sidekick remembers that a rainy-morning offer finished $210 above Juniper’s normal comparable-day baseline. Today it combines that learning with the live forecast, recent sales, and nearby activity. Every recommendation shows the exact evidence, confidence, and result worth measuring.”
+> “Sidekick remembers that a rainy-morning offer finished $210 above Juniper’s comparable-day baseline—but it does not pretend correlation proves causation. This Learning Receipt traces the signals, recommendation, result, and owner note. Because that earlier play had zero direct code redemptions, Sidekick explicitly learns to add better attribution next time.”
 
-### 1:08–1:25 — Turn advice into action
+### 0:58–1:20 — Show counsel and evidence
+
+Close the Debrief, return to **Morning briefing**, and open **How I connected the dots** on the first event recommendation.
+
+> “Today it combines that lesson with the live forecast, recent sales, and nearby activity. Every recommendation shows the exact evidence, confidence, and result worth measuring.”
+
+### 1:20–1:36 — Turn advice into action
 
 Close the evidence strip. Click **Put this in my plan**, then open **Today’s Playbook**.
 
 > “Advice only matters when it becomes action. One click turns the recommendation into a small, measurable play.”
 
-### 1:25–2:00 — Launch Kit wow moment
+### 1:36–2:16 — Launch Kit wow moment
 
-Click **Build Launch Kit**. Pause on the full Studio, then point to the phone copy, sidewalk sign, operations checklist, suggested time, baseline, and **Download calendar task**. Do not click Print during the primary take.
+Click **Build Launch Kit**. Point first to `FESTIVALFUEL` in the trackable-code card and customer copy, then the sidewalk sign, operations checklist, suggested time, baseline, and calendar task. Click **Edit kit**, change the first task owner to a teammate’s first name, and click **Save & approve**. Do not click Print during the primary take.
 
-> “Now Sidekick does more than tell Juniper what to do. In one click it creates Festival Fuel: customer-ready social and SMS copy, a branded sidewalk sign, a staff checklist, the right launch time, a calendar task, and the exact baseline to beat. These are reusable artifacts—not auto-posting—so the owner stays in control.”
+> “Now Sidekick does more than advise. It creates Festival Fuel: customer-ready copy, a branded sign, staff checklist, timing, calendar task, and baseline. Its FESTIVALFUEL code gives Juniper a direct response count without a POS integration. The owner can edit every artifact and explicitly approve the final version—AI proposes, the owner decides.”
 
-Close the Studio. Let the **Kit ready** badge remain visible for one beat.
+Close the Studio. Let the **Owner approved** badge remain visible for one beat.
 
-### 2:00–2:22 — Close the learning loop
+### 2:16–2:34 — Close the learning loop
 
 Show the seeded measured result. If recording a longer interaction, add another recommendation, mark it done, and open **Log the result** without submitting invented numbers.
 
-> “After the day, the owner records sales and whether the play helped. Sidekick compares that result with similar weekdays, saves the outcome, and brings what worked into tomorrow’s briefing.”
+> “After the day, the owner records sales, campaign-code redemptions, and a note. Sidekick compares the result with similar weekdays, preserves the attribution warning, and brings the measured pattern into tomorrow’s advice.”
 
-### 2:22–2:42 — Technical credibility
+### 2:34–2:48 — Technical credibility
 
 Return to Morning Briefing and scroll to the three signal cards.
 
-> “Open-Meteo supplies weather, Ticketmaster supplies events when configured, and every fallback is labeled. Claude, Gemini, and the deterministic local engine all produce the same validated recommendation and Launch Kit schemas. SQLite preserves the plan, kit, and measured learning loop.”
+> “Open-Meteo and Ticketmaster supply live signals when available. Claude, Gemini, and the local engine share validated schemas, while SQLite preserves owner edits, approvals, redemptions, and learning.”
 
-### 2:42–2:55 — Close
+### 2:48–2:58 — Close
 
 Return to the measured-win card.
 

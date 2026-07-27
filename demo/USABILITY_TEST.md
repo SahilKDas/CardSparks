@@ -15,6 +15,9 @@ Record only:
 - Whether they can add it to Today’s Playbook.
 - Whether they can find **Build Launch Kit** and explain what the kit is for.
 - Whether they can find the customer copy, operations checklist, and measurement baseline.
+- Whether they understand the campaign code is manually tracked and not a POS integration.
+- Whether they can edit one field and create an **Owner approved** version.
+- Whether the Campaign Debrief’s association warning is understood.
 - Whether they can mark it completed and find result logging.
 - One point of confusion stated in their own words.
 
@@ -24,16 +27,18 @@ Record only:
 - At least 4/5 correctly name two contributing signals.
 - At least 4/5 move recommendation → Playbook → Launch Kit within two minutes.
 - At least 4/5 correctly say that Sidekick prepares artifacts but does not publish or schedule them remotely.
+- At least 4/5 can edit and approve a kit without coaching.
+- At least 4/5 explain that the measured lift does not prove the campaign caused it.
 - Median total task time is under three minutes.
 
 ## Results table
 
-| Participant | Advice found | Explains 2 signals | Opens Launch Kit | Explains no auto-publish | Finds outcome flow | Total time | Confusion |
-|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | | | | | | | |
-| 2 | | | | | | | |
-| 3 | | | | | | | |
-| 4 | | | | | | | |
-| 5 | | | | | | | |
+| Participant | Advice found | Explains 2 signals | Opens kit | Edits + approves | Understands code | Understands association | Finds outcome | Total time | Confusion |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | | | | | | | | | |
+| 2 | | | | | | | | | |
+| 3 | | | | | | | | | |
+| 4 | | | | | | | | | |
+| 5 | | | | | | | | | |
 
 Report the actual totals in the submission. If a threshold is missed, fix the most common confusion and rerun only the affected task; do not manufacture a quote or result.

@@ -28,8 +28,8 @@ Open `http://localhost:8000` and click **See the coffee shop demo**. Do this bef
 
 Expected baseline:
 
-- 7 frontend tests pass.
-- 18 backend tests pass.
+- 10 frontend tests pass.
+- 21 backend tests pass.
 - The production build succeeds.
 - The demo shows a prior measured result of **+$210 versus baseline**.
 - Settings contains **Reset recorded-demo story**.
@@ -121,6 +121,8 @@ Launch Kits use a second provider-independent contract:
   "action_id": 12,
   "provider": "local",
   "offer_name": "Festival Fuel",
+  "campaign_code": "FESTIVALFUEL",
+  "owner_approved": false,
   "audience": "People heading to the nearby event",
   "schedule": { "date": "2026-08-01", "time": "15:30", "label": "Suggested launch time" },
   "customer_copy": { "social": "...", "sms": "...", "sign_headline": "FESTIVAL FUEL", "sign_body": "..." },
@@ -131,6 +133,8 @@ Launch Kits use a second provider-independent contract:
 ```
 
 All providers pass through `normalize_launch_kit`. The provider input is deliberately limited to business type/goal, action text, evidence, date, and baseline. Do not send raw customer data or invent a discount, price, partnership, or quantity that is absent from the source action/evidence.
+
+The backend derives a memorable alphanumeric campaign code and guarantees that it appears in the social copy, SMS, and sign. `PATCH /api/actions/{id}/launch-kit` is the owner-editing boundary: it accepts only copy, schedule, checklist, code, and approval state; generated provider/baseline metadata remains authoritative.
 
 ## API contract
 
@@ -144,10 +148,13 @@ All providers pass through `normalize_launch_kit`. The provider input is deliber
 | `POST` | `/api/actions/{id}/outcome` | Record sales/helpfulness/note and calculate lift |
 | `POST` | `/api/actions/{id}/launch-kit` | Create/reuse a kit; `{"refresh": true}` replaces it |
 | `GET` | `/api/actions/{id}/launch-kit` | Read the stored kit |
+| `PATCH` | `/api/actions/{id}/launch-kit` | Persist owner edits and optional approval |
 | `POST` | `/api/demo/reset` | Idempotently rebuild the Juniper recorded-demo story |
 | `GET` | `/api/health` | Health, version, provider selection, offline status |
 
 Outcome lift is calculated in the backend against historical sales for the same weekday. If no comparable weekday exists, the store falls back to the overall historical average.
+
+Outcomes also store a non-negative integer `redemptions`. The Campaign Debrief uses sales lift and redemption response as evidence but must always describe the relationship as an association, never as proof of causation. Older SQLite databases are upgraded additively with a default of zero redemptions.
 
 ## External data and provider behavior
 

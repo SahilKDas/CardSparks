@@ -17,8 +17,11 @@ The ready-made story follows **Juniper Coffee Co.**, a Portland coffee shop tryi
 - Expandable “How I connected the dots” sales × weather × events trail.
 - **Today’s Playbook** with planned, completed, dismissed, and measured actions.
 - One-click **Launch Kit Studio** with social/SMS copy, a printable sidewalk sign, operations checklist, suggested timing, calendar download, and measurement plan.
+- Memorable campaign codes embedded in every customer-facing artifact, with redemption counts captured alongside observed sales.
+- Owner editing for customer copy, sign text, timing, campaign code, and operations, followed by an explicit **Owner approved** version.
 - Idempotent Launch Kits: reopen the stored kit or explicitly regenerate it without changing the action’s planned status.
 - Outcome logging and lift calculation against historical sales for the same weekday.
+- A **Campaign Debrief / Learning Receipt** tracing Signals → Recommendation → Launch Kit → Result → Lesson with deliberately non-causal language.
 - A visible “Yesterday’s win” and recommendations informed by measured outcomes.
 - Resettable, idempotent recorded-demo story.
 - SQLite history and 15-minute event caching.
@@ -119,7 +122,7 @@ Dates use `YYYY-MM-DD`. A sample is available at [`demo/sample_sales.csv`](demo/
 
 ## Recorded submission
 
-Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:55 storyboard, narration, cursor path, Launch Kit reveal, preflight checklist, and offline backup take.
+Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:58 storyboard, narration, cursor path, Launch Kit reveal, Campaign Debrief, preflight checklist, and offline backup take.
 
 Because no real business owner is available for testing, use [`demo/USABILITY_TEST.md`](demo/USABILITY_TEST.md) with five non-technical participants. Report completion rates and timing honestly; do not invent a testimonial.
 
@@ -155,13 +158,18 @@ PATCH /api/actions/{id}
 POST  /api/actions/{id}/outcome
 POST  /api/actions/{id}/launch-kit
 GET   /api/actions/{id}/launch-kit
+PATCH /api/actions/{id}/launch-kit
 POST  /api/demo/reset
 GET   /api/health
 ```
 
 `POST /api/actions/{id}/outcome` accepts observed sales, `yes`/`no`/`unsure`, and an optional note. The backend determines the comparable weekday from the stored sales history and returns baseline, lift amount, and lift percentage.
 
+The outcome request also accepts an optional non-negative integer `redemptions`. This records how many customers mentioned the Launch Kit’s campaign code; it does not claim the campaign caused the measured sales change.
+
 `POST /api/actions/{id}/launch-kit` returns the stored kit when one exists. Send `{"refresh": true}` to replace it. Generation uses the same Anthropic → Gemini → local provider chain and one normalized schema; the provider receives only aggregated business/action context, not raw customer data. Actions returned by the API include `has_launch_kit` and optional `launch_kit`.
+
+`PATCH /api/actions/{id}/launch-kit` persists owner edits and accepts `owner_approved`. The backend revalidates the schedule and checklist and ensures the sanitized campaign code remains present in the social copy, SMS, and sign.
 
 ## Architecture
 

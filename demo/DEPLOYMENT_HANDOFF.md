@@ -18,7 +18,9 @@ Set `SIDEKICK_DB_PATH` to a file on a writable persistent volume. Example: `/dat
 2. Open `/` and click **See the coffee shop demo**.
 3. Confirm the measured **+$210** win appears.
 4. Add the first event recommendation to the Playbook.
-5. Build a Launch Kit and confirm **Festival Fuel**, social/SMS copy, sign, checklist, calendar download, and baseline all appear.
-6. Use **Business profile → Reset recorded-demo story** and confirm the old kit is gone; the seeded measured action remains and no kit is pre-created.
+5. Build a Launch Kit and confirm **Festival Fuel**, code `FESTIVALFUEL`, social/SMS copy, sign, checklist, calendar download, and baseline all appear.
+6. Edit one field, click **Save & approve**, close the Studio, and confirm the Playbook shows **Owner approved**.
+7. Open the prior measured action’s **Campaign Debrief** and confirm the five-step timeline and association-not-causation sentence appear.
+8. Use **Business profile → Reset recorded-demo story** and confirm the old kit is gone; the seeded measured action remains and no kit is pre-created.
 
 No remote messaging, calendar, or publishing permissions are required. Launch Kit Copy, Download, and Print actions run in the browser.
