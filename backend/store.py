@@ -83,6 +83,13 @@ class SidekickStore:
                 CREATE INDEX IF NOT EXISTS idx_briefings_profile ON briefings(profile_name, id DESC);
                 """
             )
+            self._ensure_column(connection, "outcomes", "redemptions", "INTEGER NOT NULL DEFAULT 0")
+
+    @staticmethod
+    def _ensure_column(connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def save_profile(self, profile: dict[str, Any], generated_at: str | None = None) -> None:
         timestamp = generated_at or now_iso()
@@ -153,7 +160,7 @@ class SidekickStore:
         try:
             row = connection.execute(
                 """SELECT a.*, o.observed_sales, o.baseline_sales, o.lift_amount,
-                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at,
+                          o.lift_percent, o.helped, o.note, o.redemptions, o.created_at AS outcome_at,
                           k.payload AS launch_kit_payload
                    FROM actions a LEFT JOIN outcomes o ON o.action_id = a.id
                    LEFT JOIN campaign_kits k ON k.action_id = a.id
@@ -171,7 +178,7 @@ class SidekickStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """SELECT a.*, o.observed_sales, o.baseline_sales, o.lift_amount,
-                          o.lift_percent, o.helped, o.note, o.created_at AS outcome_at,
+                          o.lift_percent, o.helped, o.note, o.redemptions, o.created_at AS outcome_at,
                           k.payload AS launch_kit_payload
                    FROM actions a LEFT JOIN outcomes o ON o.action_id = a.id
                    LEFT JOIN campaign_kits k ON k.action_id = a.id
@@ -202,6 +209,12 @@ class SidekickStore:
         helped = str(payload.get("helped", "unsure")).lower()
         if helped not in {"yes", "no", "unsure"}:
             raise ValueError("helped must be yes, no, or unsure.")
+        try:
+            redemptions = int(payload.get("redemptions", 0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Redemptions must be a whole number.") from exc
+        if redemptions < 0 or redemptions > 1_000_000:
+            raise ValueError("Redemptions is outside the supported range.")
         with self.connect() as connection:
             action = connection.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
             if not action:
@@ -213,9 +226,9 @@ class SidekickStore:
             connection.execute(
                 """INSERT OR REPLACE INTO outcomes(
                     action_id, observed_sales, baseline_sales, lift_amount,
-                    lift_percent, helped, note, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (action_id, observed, baseline, lift, lift_percent, helped, str(payload.get("note", ""))[:600], timestamp),
+                    lift_percent, helped, note, created_at, redemptions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (action_id, observed, baseline, lift, lift_percent, helped, str(payload.get("note", ""))[:600], timestamp, redemptions),
             )
             connection.execute("UPDATE actions SET status = 'completed', updated_at = ? WHERE id = ?", (timestamp, action_id))
             return self.get_action(action_id, connection)
@@ -277,7 +290,8 @@ class SidekickStore:
             outcome = {
                 "observed_sales": row["observed_sales"], "baseline_sales": row["baseline_sales"],
                 "lift_amount": row["lift_amount"], "lift_percent": row["lift_percent"],
-                "helped": row["helped"], "note": row["note"], "created_at": row["outcome_at"],
+                "helped": row["helped"], "note": row["note"], "redemptions": row["redemptions"],
+                "created_at": row["outcome_at"],
             }
         launch_kit = json.loads(row["launch_kit_payload"]) if row["launch_kit_payload"] else None
         return {

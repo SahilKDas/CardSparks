@@ -293,14 +293,21 @@ def fallback_recommendations(profile: dict[str, Any], summary: dict[str, Any], w
     learned = outcomes[0] if outcomes else None
     learned_outcome = learned.get("outcome") if learned else None
     learned_lift = learned_outcome.get("lift_amount", 0) if learned_outcome else 0
+    learned_redemptions = learned_outcome.get("redemptions", 0) if learned_outcome else 0
+    learned_evidence = [
+        f"Observed sales: ${learned_outcome['observed_sales']:,.0f}" if learned_outcome else f"Recent sales trend: {summary['trend_percent']:+.1f}%",
+        f"Comparable-day baseline: ${learned_outcome['baseline_sales']:,.0f}" if learned_outcome else f"Daily average: ${summary['average']:,}",
+    ]
+    if learned_redemptions:
+        learned_evidence.append(f"Campaign code redemptions: {learned_redemptions}")
     third = {
         "id": "repeat-learned-win" if learned_outcome else "sales-momentum",
         "priority": "Sidekick learned" if learned_outcome else "This week", "icon": "spark",
         "title": f"Repeat the play that added ${learned_lift:,.0f}" if learned_outcome and learned_lift > 0 else f"{trend_action} with one measurable offer",
-        "action": f"Reuse the strongest part of “{learned['title']}” in a two-hour window, then log sales again so Sidekick can separate a repeatable play from a one-off win." if learned_outcome else f"Run one two-hour offer tied to your goal: “{profile['goal']}.” Track it separately so next week’s briefing can tell you if it earned a repeat.",
+        "action": f"Reuse the strongest part of “{learned['title']}” in a two-hour window, keep a trackable campaign code, then log sales again so Sidekick can separate a repeatable play from a one-off win." if learned_outcome and learned_redemptions else f"Reuse the strongest part of “{learned['title']}” in a two-hour window, then log sales again so Sidekick can separate a repeatable play from a one-off win." if learned_outcome else f"Run one two-hour offer tied to your goal: “{profile['goal']}.” Track it separately so next week’s briefing can tell you if it earned a repeat.",
         "why": f"The prior action finished ${learned_lift:,.0f} versus its comparable-day baseline · the result was marked {learned_outcome['helped']}" if learned_outcome else f"Recent sales are {direction} {abs(summary['trend_percent'])}% · daily average is ${summary['average']:,}",
         "signals": ["sales"], "impact": "Compounding insight" if learned_outcome else "Easy to measure",
-        "evidence": [f"Observed sales: ${learned_outcome['observed_sales']:,.0f}" if learned_outcome else f"Recent sales trend: {summary['trend_percent']:+.1f}%", f"Comparable-day baseline: ${learned_outcome['baseline_sales']:,.0f}" if learned_outcome else f"Daily average: ${summary['average']:,}"],
+        "evidence": learned_evidence,
         "confidence": "high" if learned_outcome and learned_outcome["helped"] == "yes" else "medium",
         "success_metric": "Beat the comparable-day baseline again" if learned_outcome else "Revenue during the two-hour offer window",
     }
@@ -492,6 +499,33 @@ def parse_launch_kit_response(text: str) -> dict[str, Any] | None:
         return None
 
 
+def campaign_code_for(value: str) -> str:
+    code = re.sub(r"[^A-Z0-9]", "", value.upper())[:16]
+    return code if len(code) >= 4 else "SIDEKICK"
+
+
+def embed_campaign_code(customer_copy: dict[str, Any], campaign_code: str) -> dict[str, str]:
+    code = campaign_code_for(campaign_code)
+    social = str(customer_copy.get("social", "")).strip()
+    sms = str(customer_copy.get("sms", "")).strip()
+    sign_body = str(customer_copy.get("sign_body", "")).strip()
+    social_tag = f" Mention code {code}."
+    sms_tag = f" Mention {code}."
+    sign_tag = f" · Mention {code}"
+    if code not in social.upper():
+        social = social[: max(0, 599 - len(social_tag))].rstrip(" ,.;:…") + "." + social_tag
+    if code not in sms.upper():
+        available = max(0, 160 - len(sms_tag))
+        sms = sms[:available].rstrip(" ,.;:…") + sms_tag
+    if code not in sign_body.upper():
+        sign_body = sign_body[: max(0, 180 - len(sign_tag))].rstrip(" ,.;:…") + sign_tag
+    return {
+        "social": social[:600], "sms": sms[:160],
+        "sign_headline": str(customer_copy.get("sign_headline", "")).strip()[:80],
+        "sign_body": sign_body[:180],
+    }
+
+
 def _contains_unsupported_claim(kit: dict[str, Any], context: dict[str, Any]) -> bool:
     source = " ".join([context.get("action", ""), *context.get("evidence", [])]).lower()
     claims = json.dumps({
@@ -530,17 +564,19 @@ def normalize_launch_kit(raw: dict[str, Any] | None, action_id: int, provider: s
     schedule_time = str(schedule.get("time", ""))[:5]
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule_time):
         return None
-    sms = str(copy["sms"]).strip()[:160]
+    campaign_code = campaign_code_for(str(raw.get("campaign_code") or raw["offer_name"]))
+    customer_copy = embed_campaign_code(copy, campaign_code)
     return {
         "action_id": action_id,
         "provider": provider,
         "offer_name": str(raw["offer_name"]).strip()[:120],
         "audience": str(raw["audience"]).strip()[:240],
+        "campaign_code": campaign_code,
+        "owner_approved": False,
+        "approved_at": None,
+        "edited_at": None,
         "schedule": {"date": schedule_date, "time": schedule_time, "label": str(schedule.get("label") or "Suggested launch time")[:100]},
-        "customer_copy": {
-            "social": str(copy["social"]).strip()[:600], "sms": sms,
-            "sign_headline": str(copy["sign_headline"]).strip()[:80], "sign_body": str(copy["sign_body"]).strip()[:180],
-        },
+        "customer_copy": customer_copy,
         "operations": normalized_operations,
         "measurement": {
             "metric": str(measurement.get("metric") or context["success_metric"])[:300],
@@ -610,6 +646,48 @@ def generate_launch_kit(action_id: int, refresh: bool = False) -> dict[str, Any]
     if not local:
         raise ValueError("Sidekick could not build a safe Launch Kit for this action.")
     return sidekick_store.save_launch_kit(action_id, "local", local)
+
+
+def update_launch_kit(action_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    sidekick_store = store()
+    existing = sidekick_store.get_launch_kit(action_id)
+    if not existing:
+        raise ValueError("Launch Kit not found. Build it before editing.")
+    submitted = payload.get("launch_kit") if isinstance(payload.get("launch_kit"), dict) else payload
+    copy = submitted.get("customer_copy")
+    schedule = submitted.get("schedule")
+    operations = submitted.get("operations")
+    if not isinstance(copy, dict) or not isinstance(schedule, dict) or not isinstance(operations, list):
+        raise ValueError("Customer copy, schedule, and operations are required.")
+    if any(not str(copy.get(key, "")).strip() for key in ("social", "sms", "sign_headline", "sign_body")):
+        raise ValueError("All customer copy fields are required.")
+    schedule_date, schedule_time = str(schedule.get("date", ""))[:10], str(schedule.get("time", ""))[:5]
+    try:
+        date.fromisoformat(schedule_date)
+    except ValueError as exc:
+        raise ValueError("Launch date must use YYYY-MM-DD.") from exc
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule_time):
+        raise ValueError("Launch time must use HH:MM.")
+    normalized_operations = []
+    for item in operations[:5]:
+        if not isinstance(item, dict) or not all(str(item.get(key, "")).strip() for key in ("task", "timing", "owner")):
+            continue
+        normalized_operations.append({key: str(item[key]).strip()[:300 if key == "task" else 100] for key in ("task", "timing", "owner")})
+    if len(normalized_operations) < 2:
+        raise ValueError("Keep at least two complete operations tasks.")
+    campaign_code = campaign_code_for(str(submitted.get("campaign_code") or existing.get("campaign_code") or existing["offer_name"]))
+    approved = bool(payload.get("owner_approved", submitted.get("owner_approved", False)))
+    updated = {
+        **existing,
+        "campaign_code": campaign_code,
+        "schedule": {"date": schedule_date, "time": schedule_time, "label": str(schedule.get("label") or "Suggested launch time")[:100]},
+        "customer_copy": embed_campaign_code(copy, campaign_code),
+        "operations": normalized_operations,
+        "owner_approved": approved,
+        "approved_at": now_iso() if approved else None,
+        "edited_at": now_iso(),
+    }
+    return sidekick_store.save_launch_kit(action_id, existing["provider"], updated)
 
 
 def create_briefing(payload: dict[str, Any]) -> dict[str, Any]:
@@ -740,6 +818,9 @@ class SidekickHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
+            if launch_match := re.fullmatch(r"/api/actions/(\d+)/launch-kit", path):
+                self.send_json(200, update_launch_kit(int(launch_match.group(1)), payload))
+                return
             match = re.fullmatch(r"/api/actions/(\d+)", path)
             if not match:
                 self.send_json(404, {"error": "Not found"}); return

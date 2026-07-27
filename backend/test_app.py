@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -95,13 +96,15 @@ class SidekickTests(unittest.TestCase):
         self.assertEqual(action["status"], "planned")
         _, completed = self.api(f"/api/actions/{action['id']}", "PATCH", {"status": "completed"})
         self.assertEqual(completed["status"], "completed")
-        _, measured = self.api(f"/api/actions/{action['id']}/outcome", "POST", {"observed_sales": 200, "helped": "yes", "note": "Morning offer worked."})
+        _, measured = self.api(f"/api/actions/{action['id']}/outcome", "POST", {"observed_sales": 200, "helped": "yes", "redemptions": 12, "note": "Morning offer worked."})
         self.assertEqual(measured["outcome"]["baseline_sales"], 125)
         self.assertEqual(measured["outcome"]["lift_amount"], 75)
+        self.assertEqual(measured["outcome"]["redemptions"], 12)
         _, result = self.api("/api/actions?business=Test%20Coffee")
         self.assertEqual(len(result["actions"]), 1)
         learned = sidekick.fallback_recommendations(PROFILE, sidekick.summarize_sales(SALES), sidekick.fallback_weather(), sidekick.curated_demo_events("Portland"), result["actions"])
         self.assertIn("$75", learned[2]["title"])
+        self.assertIn("Campaign code redemptions: 12", learned[2]["evidence"])
 
     @patch("backend.app.advisor_recommendations")
     @patch("backend.app.discover_events")
@@ -151,6 +154,11 @@ class SidekickTests(unittest.TestCase):
         self.assertEqual(kit["offer_name"], "Festival Fuel")
         self.assertEqual(kit["action_id"], action["id"])
         self.assertLessEqual(len(kit["customer_copy"]["sms"]), 160)
+        self.assertEqual(kit["campaign_code"], "FESTIVALFUEL")
+        self.assertIn("FESTIVALFUEL", kit["customer_copy"]["social"])
+        self.assertIn("FESTIVALFUEL", kit["customer_copy"]["sms"])
+        self.assertIn("FESTIVALFUEL", kit["customer_copy"]["sign_body"])
+        self.assertFalse(kit["owner_approved"])
         self.assertGreaterEqual(len(kit["operations"]), 2)
         self.assertEqual(kit["measurement"]["baseline_sales"], 125)
         _, listed = self.api("/api/actions?business=Test%20Coffee")
@@ -222,6 +230,52 @@ class SidekickTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as context:
                 self.api(path, method, payload)
             self.assertEqual(context.exception.code, expected)
+
+    def test_owner_can_edit_and_approve_launch_kit(self) -> None:
+        action = self.create_planned_action()
+        with patch.dict(sidekick.os.environ, {"SIDEKICK_OFFLINE": "1"}, clear=False):
+            _, kit = self.api(f"/api/actions/{action['id']}/launch-kit", "POST", {})
+        edited = {
+            **kit,
+            "campaign_code": "MARKET22",
+            "schedule": {**kit["schedule"], "time": "16:15"},
+            "customer_copy": {**kit["customer_copy"], "social": "A neighbor-made market stop.", "sms": "See you before the market."},
+            "operations": [
+                {"task": "Prepare the featured products", "timing": "Morning", "owner": "Sam"},
+                {"task": "Place the sidewalk sign", "timing": "Before launch", "owner": "Alex"},
+            ],
+        }
+        _, approved = self.api(f"/api/actions/{action['id']}/launch-kit", "PATCH", {"launch_kit": edited, "owner_approved": True})
+        self.assertTrue(approved["owner_approved"])
+        self.assertTrue(approved["approved_at"])
+        self.assertEqual(approved["campaign_code"], "MARKET22")
+        self.assertEqual(approved["schedule"]["time"], "16:15")
+        self.assertIn("MARKET22", approved["customer_copy"]["social"])
+        self.assertIn("MARKET22", approved["customer_copy"]["sms"])
+        self.assertEqual(approved["operations"][0]["owner"], "Sam")
+        _, listed = self.api("/api/actions?business=Test%20Coffee")
+        self.assertTrue(listed["actions"][0]["launch_kit"]["owner_approved"])
+
+    def test_invalid_redemptions_are_rejected(self) -> None:
+        action = self.create_planned_action()
+        with self.assertRaises(HTTPError) as context:
+            self.api(f"/api/actions/{action['id']}/outcome", "POST", {"observed_sales": 200, "helped": "yes", "redemptions": -1})
+        self.assertEqual(context.exception.code, 400)
+
+    def test_existing_outcomes_table_is_migrated_additively(self) -> None:
+        legacy_path = sidekick.Path(self.temp.name) / "legacy.db"
+        with sqlite3.connect(legacy_path) as connection:
+            connection.execute("""CREATE TABLE outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, action_id INTEGER NOT NULL UNIQUE,
+                observed_sales REAL NOT NULL, baseline_sales REAL NOT NULL,
+                lift_amount REAL NOT NULL, lift_percent REAL NOT NULL,
+                helped TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL
+            )""")
+        legacy_store = sidekick.SidekickStore(legacy_path)
+        legacy_store.init()
+        with legacy_store.connect() as connection:
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(outcomes)").fetchall()}
+        self.assertIn("redemptions", columns)
 
     @patch("backend.app.advisor_recommendations")
     @patch("backend.app.discover_events")
