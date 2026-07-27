@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight, BarChart3, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight,
   CloudRain, ClipboardCheck, Clock3, Coffee, Compass, Copy, History, Lightbulb,
-  LoaderCircle, MapPin, Megaphone, Menu, PackageCheck, Plus, Printer, RefreshCw,
-  RotateCcw, Settings, Sparkles, Sun, Target, ThumbsDown, ThumbsUp, TrendingUp,
-  Upload, X,
+  LoaderCircle, MapPin, Megaphone, Menu, PackageCheck, Pencil, Plus, Printer,
+  RefreshCw, RotateCcw, Save, Settings, Sparkles, Sun, Tag, Target, ThumbsDown,
+  ThumbsUp, Trash2, TrendingUp, Upload, X,
 } from 'lucide-react'
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -36,6 +36,7 @@ const fallbackDemoAction = {
   confidence: 'medium', success_metric: 'Sales versus the comparable-day baseline',
   scheduled_for: '2026-07-25', status: 'completed', is_demo: true,
   outcome: { observed_sales: 1420, baseline_sales: 1210, lift_amount: 210, lift_percent: 17.4, helped: 'yes', note: 'Morning regulars responded well.' },
+  has_launch_kit: false, launch_kit: null,
 }
 
 const fallbackBriefing = {
@@ -158,6 +159,18 @@ function App() {
     return launchKit
   }
 
+  async function saveLaunchKit(id, launchKit, ownerApproved = false) {
+    const response = await fetch(`${API}/api/actions/${id}/launch-kit`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ launch_kit: launchKit, owner_approved: ownerApproved }),
+    })
+    if (!response.ok) throw new Error('Could not save Launch Kit')
+    const saved = await response.json()
+    setActions((current) => current.map((item) => item.id === id ? { ...item, has_launch_kit: true, launch_kit: saved } : item))
+    flash(ownerApproved ? 'Launch Kit owner approved' : 'Launch Kit edits saved')
+    return saved
+  }
+
   useEffect(() => { if (profile) { loadBriefing(profile); loadActions(profile) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function finishOnboarding(nextProfile) {
@@ -181,7 +194,7 @@ function App() {
         <MobileHeader profile={profile} open={() => setMobileNav(true)} />
         {notice && <div className="toast"><Check /> {notice}</div>}
         {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} addToPlan={addToPlan} plannedIds={new Set(actions.filter((item) => item.status === 'planned').map((item) => item.recommendation_id))} openPlaybook={() => setView('playbook')} />}
-        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} buildLaunchKit={buildLaunchKit} />}
+        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} buildLaunchKit={buildLaunchKit} saveLaunchKit={saveLaunchKit} />}
         {view === 'history' && <HistoryView profile={profile} />}
         {view === 'settings' && <SettingsView profile={profile} reset={reset} resetDemo={startDemo} />}
       </main>
@@ -322,9 +335,10 @@ function EventsPanel({ events, source, updatedAt }) {
 
 function BriefingSkeleton() { return <div className="skeleton"><LoaderCircle className="spin" /><h2>Connecting the dots…</h2><p>Reading sales, weather, and what’s happening nearby.</p></div> }
 
-function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit }) {
+function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit, saveLaunchKit }) {
   const [selected, setSelected] = useState(null)
   const [studioAction, setStudioAction] = useState(null)
+  const [debriefAction, setDebriefAction] = useState(null)
   const [buildingId, setBuildingId] = useState(null)
   const [error, setError] = useState('')
   const active = actions.filter((item) => item.status === 'planned')
@@ -344,15 +358,16 @@ function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit }) 
     <div className="playbook-summary"><div><ClipboardCheck /><span><strong>{active.length}</strong><small>planned moves</small></span></div><div><PackageCheck /><span><strong>{actions.filter((item) => item.has_launch_kit).length}</strong><small>launch kits ready</small></span></div><div><Sparkles /><span><strong>{measured.filter((item) => item.outcome.lift_amount > 0).length}</strong><small>proven wins</small></span></div></div>
     {error && <p className="form-error">{error}</p>}
     {actions.length ? <div className="playbook-list">{actions.map((item) => <article className={`playbook-card status-${item.status}`} key={item.id}>
-      <header><span className={`status-pill ${item.status}`}>{item.outcome ? 'measured' : item.status}</span>{item.has_launch_kit && <span className="kit-ready-pill"><CheckCircle2 /> Kit ready</span>}{item.is_demo && <span className="demo-data-pill">Demo data</span>}<time>{new Date(`${item.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</time></header>
+      <header><span className={`status-pill ${item.status}`}>{item.outcome ? 'measured' : item.status}</span>{item.has_launch_kit && <span className={`kit-ready-pill ${item.launch_kit?.owner_approved ? 'approved' : ''}`}><CheckCircle2 /> {item.launch_kit?.owner_approved ? 'Owner approved' : 'Kit ready'}</span>}{item.is_demo && <span className="demo-data-pill">Demo data</span>}<time>{new Date(`${item.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</time></header>
       <h2>{item.title}</h2><p>{item.action}</p><div className="metric-line"><Target /><span><small>Success looks like</small><strong>{item.success_metric}</strong></span></div>
-      {item.outcome ? <div className={`outcome-result ${item.outcome.lift_amount >= 0 ? 'positive' : 'negative'}`}><TrendingUp /><div><span><strong>{item.outcome.lift_amount >= 0 ? '+' : '−'}${Math.abs(item.outcome.lift_amount).toLocaleString()}</strong> vs baseline</span><small>${item.outcome.observed_sales.toLocaleString()} observed · ${item.outcome.baseline_sales.toLocaleString()} usual {item.outcome.note && `· “${item.outcome.note}”`}</small></div></div> : <div className="playbook-actions">{item.status === 'planned' ? <>
+      {item.outcome ? <><div className={`outcome-result ${item.outcome.lift_amount >= 0 ? 'positive' : 'negative'}`}><TrendingUp /><div><span><strong>{item.outcome.lift_amount >= 0 ? '+' : '−'}${Math.abs(item.outcome.lift_amount).toLocaleString()}</strong> vs baseline</span><small>${item.outcome.observed_sales.toLocaleString()} observed · ${item.outcome.baseline_sales.toLocaleString()} usual · {item.outcome.redemptions || 0} code redemptions</small></div></div><button className="debrief-button" onClick={() => setDebriefAction(item)}><Sparkles /> Open Campaign Debrief <ArrowRight /></button></> : <div className="playbook-actions">{item.status === 'planned' ? <>
         <button className={`launch-kit-button ${item.has_launch_kit ? 'ready' : ''}`} onClick={() => openOrBuildKit(item)} disabled={buildingId === item.id}>{buildingId === item.id ? <LoaderCircle className="spin" /> : item.has_launch_kit ? <CheckCircle2 /> : <Megaphone />} {buildingId === item.id ? 'Building your kit…' : item.has_launch_kit ? 'Open Launch Kit' : 'Build Launch Kit'}</button>
         <button className="primary-button" onClick={() => updateAction(item.id, 'completed').catch(() => setError('Could not mark that action done.'))}><Check /> Mark as done</button><button className="quiet-button" onClick={() => updateAction(item.id, 'dismissed').catch(() => setError('Could not dismiss that action.'))}><X /> Dismiss</button>
       </> : item.status === 'completed' ? <button className="primary-button" onClick={() => setSelected(item)}><TrendingUp /> Log the result</button> : null}</div>}
     </article>)}</div> : <div className="empty-state"><ClipboardCheck /><h2>Your Playbook is ready for its first move</h2><p>Open the morning briefing and put one recommendation into your plan.</p></div>}
     {selected && <OutcomeModal action={selected} close={() => setSelected(null)} save={async (values) => { await recordOutcome(selected.id, values); setSelected(null) }} />}
-    {studioAction?.launch_kit && <LaunchKitStudio action={studioAction} kit={studioAction.launch_kit} close={() => setStudioAction(null)} refresh={async () => { const launchKit = await buildLaunchKit(studioAction.id, true); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} />}
+    {studioAction?.launch_kit && <LaunchKitStudio action={studioAction} kit={studioAction.launch_kit} close={() => setStudioAction(null)} refresh={async () => { const launchKit = await buildLaunchKit(studioAction.id, true); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} save={async (draft, approved) => { const launchKit = await saveLaunchKit(studioAction.id, draft, approved); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} />}
+    {debriefAction && <CampaignDebrief action={debriefAction} close={() => setDebriefAction(null)} />}
   </div>
 }
 
@@ -368,7 +383,7 @@ function calendarTimestamp(value) {
 export function buildCalendarFile(kit) {
   const start = new Date(`${kit.schedule.date}T${kit.schedule.time}:00`)
   const end = new Date(start.getTime() + 30 * 60 * 1000)
-  const description = `Audience: ${kit.audience}\nMeasure: ${kit.measurement.metric}\nNothing is published or sent automatically.`
+  const description = `Audience: ${kit.audience}\nCampaign code: ${kit.campaign_code || 'None'}\nMeasure: ${kit.measurement.metric}\nNothing is published or sent automatically.`
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sidekick AI//Launch Kit//EN', 'BEGIN:VEVENT', `UID:sidekick-action-${kit.action_id}@sidekick.local`, `DTSTAMP:${calendarTimestamp(new Date())}`, `DTSTART:${calendarTimestamp(start)}`, `DTEND:${calendarTimestamp(end)}`, `SUMMARY:${escapeCalendarText(kit.offer_name)}`, `DESCRIPTION:${escapeCalendarText(description)}`, 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n')
 }
 
@@ -379,60 +394,94 @@ async function copyText(value) {
   document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove()
 }
 
-export function LaunchKitStudio({ action, kit, close, refresh }) {
+function cloneLaunchKit(kit) { return JSON.parse(JSON.stringify(kit)) }
+
+export function LaunchKitStudio({ action, kit, close, refresh, save = async (draft) => draft }) {
   const [copied, setCopied] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(() => cloneLaunchKit(kit))
   const [error, setError] = useState('')
+  useEffect(() => { setDraft(cloneLaunchKit(kit)) }, [kit])
   useEffect(() => {
     const handleKey = (event) => event.key === 'Escape' && close()
-    window.addEventListener('keydown', handleKey)
-    document.body.classList.add('launch-kit-open')
+    window.addEventListener('keydown', handleKey); document.body.classList.add('launch-kit-open')
     return () => { window.removeEventListener('keydown', handleKey); document.body.classList.remove('launch-kit-open') }
   }, [close])
+
+  const displayKit = draft
+  const updateCopy = (key, value) => setDraft((current) => ({ ...current, customer_copy: { ...current.customer_copy, [key]: value } }))
+  const updateSchedule = (key, value) => setDraft((current) => ({ ...current, schedule: { ...current.schedule, [key]: value } }))
+  const updateOperation = (index, key, value) => setDraft((current) => ({ ...current, operations: current.operations.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item) }))
 
   async function copy(label, value) {
     try { await copyText(value); setCopied(label); window.setTimeout(() => setCopied(''), 1800) }
     catch { setError('Copy is blocked in this browser. Select the text manually.') }
   }
   function downloadCalendar() {
-    const blob = new Blob([buildCalendarFile(kit)], { type: 'text/calendar;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url; anchor.download = `${kit.offer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'sidekick-launch-kit'}.ics`
+    const blob = new Blob([buildCalendarFile(displayKit)], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob); const anchor = document.createElement('a')
+    anchor.href = url; anchor.download = `${displayKit.offer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'sidekick-launch-kit'}.ics`
     document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url)
   }
   async function regenerate() {
     setRefreshing(true); setError('')
-    try { await refresh() } catch { setError('Sidekick kept your current kit because regeneration was unavailable.') }
+    try { const regenerated = await refresh(); setDraft(cloneLaunchKit(regenerated)); setEditing(false) }
+    catch { setError('Sidekick kept your current kit because regeneration was unavailable.') }
     finally { setRefreshing(false) }
   }
-  const providerName = { local: 'Explainable local generator', gemini: 'Gemini', anthropic: 'Claude' }[kit.provider] || kit.provider
-  const scheduled = new Date(`${kit.schedule.date}T${kit.schedule.time}:00`)
+  async function persist(approved) {
+    setSaving(true); setError('')
+    try { const saved = await save(draft, approved); setDraft(cloneLaunchKit(saved)); setEditing(false) }
+    catch { setError('Sidekick could not save those edits. Check every field and try again.') }
+    finally { setSaving(false) }
+  }
+  const providerName = { local: 'Explainable local generator', gemini: 'Gemini', anthropic: 'Claude' }[displayKit.provider] || displayKit.provider
+  const scheduled = new Date(`${displayKit.schedule.date}T${displayKit.schedule.time}:00`)
   return <div className="launch-studio-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
     <section className="launch-studio" role="dialog" aria-modal="true" aria-labelledby="launch-kit-title">
-      <header className="studio-header"><div><span className="studio-mark"><Megaphone /></span><div><p className="eyebrow">Launch Kit Studio</p><h2 id="launch-kit-title">{kit.offer_name}</h2><p>Everything needed to turn this Playbook move into action.</p></div></div><button className="modal-close" onClick={close} aria-label="Close Launch Kit Studio"><X /></button></header>
-      <div className="studio-trust"><span><Sparkles /> Generated by {providerName}</span>{action.is_demo && <span className="demo-data-pill">Demo action context</span>}<span>Copy only · nothing is sent or published</span></div>
+      <header className="studio-header"><div><span className="studio-mark"><Megaphone /></span><div><p className="eyebrow">Launch Kit Studio</p><h2 id="launch-kit-title">{displayKit.offer_name}</h2><p>Everything needed to turn this Playbook move into action.</p></div></div><button className="modal-close" onClick={close} aria-label="Close Launch Kit Studio"><X /></button></header>
+      <div className="studio-trust"><span><Sparkles /> Generated by {providerName}</span>{displayKit.owner_approved && <span className="owner-approved-pill"><CheckCircle2 /> Owner approved</span>}{action.is_demo && <span className="demo-data-pill">Demo action context</span>}<span>Copy only · nothing is sent or published</span></div>
       {error && <p className="form-error">{error}</p>}
       <div className="studio-grid">
-        <section className="studio-panel copy-panel"><div className="panel-heading"><div><Coffee /><span><small>Customer-ready copy</small><strong>Phone preview</strong></span></div><span>{kit.audience}</span></div>
-          <div className="phone-preview"><div className="phone-speaker" /><div className="social-preview"><span className="mini-brand">J</span><div><strong>{action.profile_name}</strong><small>Post preview · not published</small></div></div><p>{kit.customer_copy.social}</p><div className="social-image"><span>{kit.customer_copy.sign_headline}</span><small>{kit.customer_copy.sign_body}</small></div></div>
-          <div className="copy-row"><div><small>Social caption</small><p>{kit.customer_copy.social}</p></div><button onClick={() => copy('social', kit.customer_copy.social)}><Copy /> {copied === 'social' ? 'Copied' : 'Copy'}</button></div>
-          <div className="copy-row sms-row"><div><small>SMS · {kit.customer_copy.sms.length}/160</small><p>{kit.customer_copy.sms}</p></div><button onClick={() => copy('sms', kit.customer_copy.sms)}><Copy /> {copied === 'sms' ? 'Copied' : 'Copy'}</button></div>
+        <section className="studio-panel copy-panel"><div className="panel-heading"><div><Coffee /><span><small>Customer-ready copy</small><strong>Phone preview</strong></span></div><span>{displayKit.audience}</span></div>
+          {editing && <div className="kit-editor copy-editor"><label>Campaign code<input value={draft.campaign_code || ''} maxLength="16" onChange={(event) => setDraft((current) => ({ ...current, campaign_code: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))} /></label><label>Social caption<textarea value={draft.customer_copy.social} onChange={(event) => updateCopy('social', event.target.value)} /></label><label>SMS <small>{draft.customer_copy.sms.length}/160</small><textarea maxLength="160" value={draft.customer_copy.sms} onChange={(event) => updateCopy('sms', event.target.value)} /></label><label>Sign headline<input value={draft.customer_copy.sign_headline} onChange={(event) => updateCopy('sign_headline', event.target.value)} /></label><label>Sign body<textarea value={draft.customer_copy.sign_body} onChange={(event) => updateCopy('sign_body', event.target.value)} /></label><p>Sidekick automatically keeps the campaign code in all three customer-facing artifacts.</p></div>}
+          <div className="campaign-code"><Tag /><div><small>Trackable campaign code</small><strong>{displayKit.campaign_code}</strong><span>Ask customers to mention this code; no POS connection required.</span></div><button aria-label="Copy campaign code" onClick={() => copy('code', displayKit.campaign_code)}><Copy /> {copied === 'code' ? 'Copied' : 'Copy'}</button></div>
+          <div className="phone-preview"><div className="phone-speaker" /><div className="social-preview"><span className="mini-brand">J</span><div><strong>{action.profile_name}</strong><small>Post preview · not published</small></div></div><p>{displayKit.customer_copy.social}</p><div className="social-image"><span>{displayKit.customer_copy.sign_headline}</span><small>{displayKit.customer_copy.sign_body}</small></div></div>
+          <div className="copy-row"><div><small>Social caption</small><p>{displayKit.customer_copy.social}</p></div><button aria-label="Copy social caption" onClick={() => copy('social', displayKit.customer_copy.social)}><Copy /> {copied === 'social' ? 'Copied' : 'Copy'}</button></div>
+          <div className="copy-row sms-row"><div><small>SMS · {displayKit.customer_copy.sms.length}/160</small><p>{displayKit.customer_copy.sms}</p></div><button aria-label="Copy SMS message" onClick={() => copy('sms', displayKit.customer_copy.sms)}><Copy /> {copied === 'sms' ? 'Copied' : 'Copy'}</button></div>
         </section>
-        <section className="studio-panel sign-panel"><div className="panel-heading"><div><Printer /><span><small>Sidewalk sign</small><strong>Print-ready preview</strong></span></div><button onClick={() => window.print()}><Printer /> Print sign</button></div>
-          <div className="launch-sign"><div className="sign-spark">✦</div><small>{action.profile_name}</small><h3>{kit.customer_copy.sign_headline}</h3><p>{kit.customer_copy.sign_body}</p><span>YOUR NEIGHBORHOOD SIDEKICK PICK</span></div>
-        </section>
-        <section className="studio-panel operations-panel"><div className="panel-heading"><div><PackageCheck /><span><small>Make it happen</small><strong>Operations checklist</strong></span></div></div><ol>{kit.operations.map((operation, index) => <li key={`${operation.task}-${index}`}><span>{index + 1}</span><div><strong>{operation.task}</strong><small>{operation.timing} · {operation.owner}</small></div></li>)}</ol></section>
-        <section className="studio-panel timing-panel"><div className="panel-heading"><div><Clock3 /><span><small>{kit.schedule.label}</small><strong>{scheduled.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</strong></span></div></div><button className="calendar-button" onClick={downloadCalendar}><CalendarPlus /> Download calendar task</button><p>No calendar account is connected or modified.</p></section>
-        <section className="studio-panel measurement-panel"><div className="panel-heading"><div><Target /><span><small>Measurement plan</small><strong>Know whether it worked</strong></span></div></div><div className="baseline"><small>Comparable-day baseline</small><strong>${Number(kit.measurement.baseline_sales).toLocaleString()}</strong></div><p>{kit.measurement.metric}</p><span>After the day ends, mark the Playbook action done and log observed sales.</span></section>
+        <section className="studio-panel sign-panel"><div className="panel-heading"><div><Printer /><span><small>Sidewalk sign</small><strong>Print-ready preview</strong></span></div><button onClick={() => window.print()}><Printer /> Print sign</button></div><div className="launch-sign"><div className="sign-spark">✦</div><small>{action.profile_name}</small><h3>{displayKit.customer_copy.sign_headline}</h3><p>{displayKit.customer_copy.sign_body}</p><span>YOUR NEIGHBORHOOD SIDEKICK PICK</span></div></section>
+        <section className="studio-panel operations-panel"><div className="panel-heading"><div><PackageCheck /><span><small>Make it happen</small><strong>Operations checklist</strong></span></div></div>{editing ? <div className="operations-editor">{draft.operations.map((operation, index) => <div className="operation-edit" key={index}><span>{index + 1}</span><div><input aria-label={`Task ${index + 1}`} value={operation.task} onChange={(event) => updateOperation(index, 'task', event.target.value)} /><input aria-label={`Timing ${index + 1}`} value={operation.timing} onChange={(event) => updateOperation(index, 'timing', event.target.value)} /><input aria-label={`Owner ${index + 1}`} value={operation.owner} onChange={(event) => updateOperation(index, 'owner', event.target.value)} /></div><button aria-label={`Remove task ${index + 1}`} disabled={draft.operations.length <= 2} onClick={() => setDraft((current) => ({ ...current, operations: current.operations.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 /></button></div>)}<button className="add-operation" disabled={draft.operations.length >= 5} onClick={() => setDraft((current) => ({ ...current, operations: [...current.operations, { task: 'New task', timing: 'Before launch', owner: 'Owner' }] }))}><Plus /> Add task</button></div> : <ol>{displayKit.operations.map((operation, index) => <li key={`${operation.task}-${index}`}><span>{index + 1}</span><div><strong>{operation.task}</strong><small>{operation.timing} · {operation.owner}</small></div></li>)}</ol>}</section>
+        <section className="studio-panel timing-panel"><div className="panel-heading"><div><Clock3 /><span><small>{displayKit.schedule.label}</small><strong>{scheduled.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</strong></span></div></div>{editing && <div className="schedule-editor"><label>Launch date<input type="date" value={draft.schedule.date} onChange={(event) => updateSchedule('date', event.target.value)} /></label><label>Launch time<input type="time" value={draft.schedule.time} onChange={(event) => updateSchedule('time', event.target.value)} /></label></div>}<button className="calendar-button" onClick={downloadCalendar}><CalendarPlus /> Download calendar task</button><p>No calendar account is connected or modified.</p></section>
+        <section className="studio-panel measurement-panel"><div className="panel-heading"><div><Target /><span><small>Measurement plan</small><strong>Know whether it worked</strong></span></div></div><div className="baseline"><small>Comparable-day baseline</small><strong>${Number(displayKit.measurement.baseline_sales).toLocaleString()}</strong></div><p>{displayKit.measurement.metric}</p><span>Log sales and {displayKit.campaign_code} redemptions after the day ends.</span></section>
       </div>
-      <footer className="studio-footer"><p><CheckCircle2 /> Your action stays planned until you mark it done.</p><button className="quiet-button" onClick={regenerate} disabled={refreshing}>{refreshing ? <LoaderCircle className="spin" /> : <RefreshCw />} {refreshing ? 'Refreshing…' : 'Regenerate kit'}</button><button className="primary-button" onClick={close}>Back to Playbook</button></footer>
+      <footer className="studio-footer"><p><CheckCircle2 /> {displayKit.owner_approved ? 'This version is owner approved.' : 'Your action stays planned until you mark it done.'}</p>{editing ? <><button className="quiet-button" onClick={() => { setDraft(cloneLaunchKit(kit)); setEditing(false); setError('') }}>Cancel</button><button className="secondary-button studio-save" onClick={() => persist(false)} disabled={saving}><Save /> Save draft</button><button className="primary-button" onClick={() => persist(true)} disabled={saving}>{saving ? <LoaderCircle className="spin" /> : <CheckCircle2 />} Save & approve</button></> : <><button className="quiet-button" onClick={regenerate} disabled={refreshing}>{refreshing ? <LoaderCircle className="spin" /> : <RefreshCw />} {refreshing ? 'Refreshing…' : 'Regenerate'}</button><button className="secondary-button studio-save" onClick={() => setEditing(true)}><Pencil /> Edit kit</button>{!displayKit.owner_approved && <button className="primary-button" onClick={() => persist(true)} disabled={saving}><CheckCircle2 /> Approve kit</button>}<button className="primary-button back-playbook" onClick={close}>Back to Playbook</button></>}</footer>
     </section>
   </div>
 }
 
-function OutcomeModal({ action, close, save }) {
+export function CampaignDebrief({ action, close }) {
+  const outcome = action.outcome
+  const kit = action.launch_kit
+  const lift = Number(outcome.lift_amount)
+  const redemptions = Number(outcome.redemptions || 0)
+  const signalLabel = (action.signals || []).join(' + ') || 'sales'
+  const lesson = lift > 0 && outcome.helped === 'yes'
+    ? redemptions > 0 ? `Prioritize similar ${signalLabel} plays and keep campaign-code tracking so the next comparison has both sales and response evidence.` : `Treat similar ${signalLabel} plays as promising, and add a trackable campaign code next time to strengthen the evidence.`
+    : `Treat this ${signalLabel} play as exploratory, change one element next time, and compare it against the same weekday baseline.`
+  useEffect(() => {
+    const handleKey = (event) => event.key === 'Escape' && close()
+    window.addEventListener('keydown', handleKey); document.body.classList.add('launch-kit-open')
+    return () => { window.removeEventListener('keydown', handleKey); document.body.classList.remove('launch-kit-open') }
+  }, [close])
+  return <div className="debrief-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="campaign-debrief" role="dialog" aria-modal="true" aria-labelledby="debrief-title"><button className="modal-close" onClick={close} aria-label="Close Campaign Debrief"><X /></button><header><span><Sparkles /></span><div><p className="eyebrow">Campaign Debrief · Learning Receipt</p><h2 id="debrief-title">{action.title}</h2><p>{new Date(`${action.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p></div></header><div className={`debrief-verdict ${lift >= 0 ? 'positive' : 'negative'}`}><strong>{lift >= 0 ? '+' : '−'}${Math.abs(lift).toLocaleString()}</strong><div><h3>versus the comparable-day baseline</h3><p>Sales finished ${Math.abs(lift).toLocaleString()} {lift >= 0 ? 'above' : 'below'} baseline while this play was running. This is an association—not proof that the campaign caused the change.</p></div></div><div className="learning-timeline"><article><span><BarChart3 /></span><small>1 · Signals</small><h3>{signalLabel}</h3><p>{(action.evidence || [action.why]).join(' · ')}</p></article><i>→</i><article><span><Lightbulb /></span><small>2 · Recommendation</small><h3>{action.title}</h3><p>{action.action}</p></article><i>→</i><article><span><Megaphone /></span><small>3 · Launch Kit</small><h3>{kit ? kit.offer_name : 'Earlier manual play'}</h3><p>{kit ? `${kit.campaign_code} · ${kit.owner_approved ? 'Owner approved' : 'Draft kit'}` : 'This measured action predates Launch Kit tracking.'}</p></article><i>→</i><article><span><TrendingUp /></span><small>4 · Result</small><h3>${outcome.observed_sales.toLocaleString()} observed</h3><p>${outcome.baseline_sales.toLocaleString()} baseline · {redemptions} code redemptions</p></article><i>→</i><article className="lesson-step"><span><Sparkles /></span><small>5 · Lesson</small><h3>What Sidekick will do differently next time</h3><p>{lesson}</p></article></div><div className="debrief-details"><div><small>Owner’s note</small><p>{outcome.note || 'No note was recorded.'}</p></div><div><small>Measurement confidence</small><p>{redemptions > 0 ? 'Sales comparison + direct campaign-code response' : 'Sales comparison only; add a code next time for stronger attribution.'}</p></div></div><footer><p><Target /> Sidekick learns from measured patterns while keeping the owner in control.</p><button className="primary-button" onClick={close}>Back to Playbook</button></footer></section></div>
+}
+
+export function OutcomeModal({ action, close, save }) {
   const [sales, setSales] = useState('')
+  const [redemptions, setRedemptions] = useState('0')
   const [helped, setHelped] = useState('yes')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -441,9 +490,10 @@ function OutcomeModal({ action, close, save }) {
     event.preventDefault()
     if (sales === '' || Number(sales) < 0) { setError('Enter the day’s observed sales.'); return }
     setSaving(true); setError('')
-    try { await save({ observed_sales: Number(sales), helped, note }) } catch { setError('Sidekick could not save that result. Please try again.'); setSaving(false) }
+    if (!Number.isInteger(Number(redemptions)) || Number(redemptions) < 0) { setError('Campaign code redemptions must be a whole number.'); setSaving(false); return }
+    try { await save({ observed_sales: Number(sales), helped, redemptions: Number(redemptions), note }) } catch { setError('Sidekick could not save that result. Please try again.'); setSaving(false) }
   }
-  return <div className="modal-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><form className="outcome-modal" onSubmit={submit}><button type="button" className="modal-close" onClick={close}><X /></button><span className="modal-icon"><Sparkles /></span><p className="eyebrow">Close the learning loop</p><h2>How did “{action.title}” go?</h2><p>Sidekick compares the result with similar weekdays—then brings what worked into tomorrow’s advice.</p><label>Observed sales that day<div className="money-input"><span>$</span><input autoFocus type="number" min="0" step="0.01" value={sales} onChange={(event) => setSales(event.target.value)} placeholder="0.00" /></div></label><fieldset><legend>Did this action help?</legend><button type="button" className={helped === 'yes' ? 'selected' : ''} onClick={() => setHelped('yes')}><ThumbsUp /> Yes</button><button type="button" className={helped === 'unsure' ? 'selected' : ''} onClick={() => setHelped('unsure')}><Sparkles /> Unsure</button><button type="button" className={helped === 'no' ? 'selected' : ''} onClick={() => setHelped('no')}><ThumbsDown /> No</button></fieldset><label>Quick note <small>(optional)</small><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What did customers respond to?" /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button full" disabled={saving}>{saving ? <LoaderCircle className="spin" /> : <Sparkles />} Save result and teach Sidekick</button></form></div>
+  return <div className="modal-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><form className="outcome-modal" onSubmit={submit}><button type="button" className="modal-close" onClick={close}><X /></button><span className="modal-icon"><Sparkles /></span><p className="eyebrow">Close the learning loop</p><h2>How did “{action.title}” go?</h2><p>Sidekick compares the result with similar weekdays—then brings what worked into tomorrow’s advice.</p><label>Observed sales that day<div className="money-input"><span>$</span><input aria-label="Observed sales that day" autoFocus type="number" min="0" step="0.01" value={sales} onChange={(event) => setSales(event.target.value)} placeholder="0.00" /></div></label>{action.launch_kit && <label>Campaign code redemptions <small>({action.launch_kit.campaign_code})</small><input aria-label="Campaign code redemptions" className="redemption-input" type="number" min="0" step="1" value={redemptions} onChange={(event) => setRedemptions(event.target.value)} /></label>}<fieldset><legend>Did this action help?</legend><button type="button" className={helped === 'yes' ? 'selected' : ''} onClick={() => setHelped('yes')}><ThumbsUp /> Yes</button><button type="button" className={helped === 'unsure' ? 'selected' : ''} onClick={() => setHelped('unsure')}><Sparkles /> Unsure</button><button type="button" className={helped === 'no' ? 'selected' : ''} onClick={() => setHelped('no')}><ThumbsDown /> No</button></fieldset><label>Quick note <small>(optional)</small><textarea aria-label="Quick note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="What did customers respond to?" /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button full" disabled={saving}>{saving ? <LoaderCircle className="spin" /> : <Sparkles />} Save result and teach Sidekick</button></form></div>
 }
 
 function HistoryView({ profile }) {
