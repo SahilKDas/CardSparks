@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, BarChart3, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight,
   CloudRain, ClipboardCheck, Clock3, Coffee, Compass, Copy, History, Lightbulb,
@@ -66,6 +66,51 @@ const fallbackBriefing = {
   ],
 }
 
+const JUDGE_TOUR_STEPS = [
+  {
+    id: 'memory', target: 'recent-win', view: 'dashboard', displayStep: 1,
+    eyebrow: 'Measured memory', title: 'Start with what Sidekick remembers',
+    instruction: 'This prior result gives tomorrow’s advice a useful starting point. Open the highlighted learning loop to see the evidence without claiming causation.',
+    expectedEvent: 'open_debrief',
+  },
+  {
+    id: 'debrief', target: 'debrief-lesson', view: 'playbook', displayStep: 2,
+    eyebrow: 'Honest learning', title: 'A receipt, not a victory lap',
+    instruction: 'The Campaign Debrief preserves the baseline, observed sales, owner note, and redemptions—then states exactly what Sidekick will try differently.',
+    nextLabel: 'Continue to today’s advice',
+  },
+  {
+    id: 'evidence', target: 'recommendation-evidence', view: 'dashboard', displayStep: 3,
+    eyebrow: 'Connected reasoning', title: 'See how the signals become a move',
+    instruction: 'Sales, weather, and nearby activity stay visible inside the recommendation, along with confidence and a result worth measuring.',
+    nextLabel: 'Turn it into a plan',
+  },
+  {
+    id: 'plan', target: 'recommendation-plan', view: 'dashboard', displayStep: 4,
+    eyebrow: 'Advice into action', title: 'Put the move into the Playbook',
+    instruction: 'Use the highlighted control. Sidekick will create a real planned action before the tour continues.',
+    expectedEvent: 'action_planned',
+  },
+  {
+    id: 'build', target: 'build-launch-kit', view: 'playbook', displayStep: 5,
+    eyebrow: 'Launch Kit reveal', title: 'Build the campaign in one click',
+    instruction: 'Use the highlighted button to turn the recommendation into customer copy, a sign, an operations checklist, timing, and a measurement plan.',
+    expectedEvent: 'kit_opened',
+  },
+  {
+    id: 'reveal', target: 'launch-kit-proof', view: 'playbook', displayStep: 5,
+    eyebrow: 'Launch Kit reveal', title: 'The advice is now usable',
+    instruction: 'Festival Fuel includes a trackable code, customer-ready copy, a printable sign, operations, timing, and a comparable-day baseline. Nothing is published automatically.',
+    nextLabel: 'Show owner control',
+  },
+  {
+    id: 'owner', target: 'owner-control', view: 'playbook', displayStep: 6,
+    eyebrow: 'Owner control', title: 'AI advises; the owner decides',
+    instruction: 'Choose Edit kit, change anything you like, then use Save & approve. The tour finishes only after the approved version is saved.',
+    expectedEvent: 'kit_approved',
+  },
+]
+
 function App() {
   const [profile, setProfile] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sidekick-profile')) } catch { return null }
@@ -76,6 +121,9 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false)
   const [actions, setActions] = useState([])
   const [notice, setNotice] = useState('')
+  const [tour, setTour] = useState(null)
+  const tourReturnFocus = useRef(null)
+  const tourStep = tour ? JUDGE_TOUR_STEPS[tour.index] : null
 
   async function loadBriefing(nextProfile = profile, refresh = false) {
     if (!nextProfile) return
@@ -106,6 +154,57 @@ function App() {
     window.setTimeout(() => setNotice(''), 2600)
   }
 
+  function goToTourStep(index) {
+    const nextIndex = Math.max(0, Math.min(index, JUDGE_TOUR_STEPS.length - 1))
+    setView(JUDGE_TOUR_STEPS[nextIndex].view)
+    setTour((current) => current ? { ...current, index: nextIndex, editing: false } : current)
+  }
+
+  function exitJudgeTour() {
+    setTour(null)
+    window.requestAnimationFrame(() => {
+      const original = tourReturnFocus.current
+      const fallback = document.querySelector('[data-tour-launch]')
+      const target = original?.isConnected ? original : fallback
+      target?.focus()
+    })
+  }
+
+  async function startJudgeTour(event) {
+    tourReturnFocus.current = event?.currentTarget || document.activeElement
+    setTour(null)
+    await startDemo()
+    setTour({ index: 0, actionId: null, editing: false, approved: false })
+  }
+
+  function handleTourEvent(name, payload = {}) {
+    if (!tour || !tourStep) return
+    if (tourStep.id === 'memory' && name === 'open_debrief') {
+      setView('playbook'); setTour({ ...tour, index: 1 }); return
+    }
+    if (tourStep.id === 'plan' && name === 'action_planned') {
+      setView('playbook'); setTour({ ...tour, index: 4, actionId: payload.actionId }); return
+    }
+    if (tourStep.id === 'build' && name === 'kit_opened') {
+      setTour({ ...tour, index: 5 }); return
+    }
+    if (tourStep.id === 'owner' && name === 'kit_editing') {
+      setTour({ ...tour, editing: true }); return
+    }
+    if (tourStep.id === 'owner' && name === 'kit_approved') {
+      setTour({ ...tour, approved: true, editing: false })
+    }
+  }
+
+  function advanceJudgeTour() {
+    if (!tourStep) return
+    if (tourStep.id === 'debrief') goToTourStep(2)
+    else if (tourStep.id === 'evidence') goToTourStep(3)
+    else if (tourStep.id === 'reveal') goToTourStep(6)
+    else if (tourStep.id === 'owner' && tour?.approved) exitJudgeTour()
+    else goToTourStep(tour.index + 1)
+  }
+
   async function startDemo() {
     setLoading(true)
     try {
@@ -127,6 +226,7 @@ function App() {
       const action = await response.json()
       setActions((current) => [action, ...current.filter((item) => item.id !== action.id)])
       flash('Added to Today’s Playbook')
+      handleTourEvent('action_planned', { actionId: action.id })
     } catch { flash('The Playbook is temporarily unavailable') }
   }
 
@@ -182,10 +282,10 @@ function App() {
 
   function reset() {
     localStorage.removeItem('sidekick-profile')
-    setProfile(null); setBriefing(null); setActions([]); setView('dashboard')
+    setTour(null); setProfile(null); setBriefing(null); setActions([]); setView('dashboard')
   }
 
-  if (!profile) return <Onboarding onFinish={finishOnboarding} onDemo={startDemo} loading={loading} />
+  if (!profile) return <Onboarding onFinish={finishOnboarding} onDemo={() => startDemo()} onJudgeTour={startJudgeTour} loading={loading} />
 
   return (
     <div className="app-shell">
@@ -193,16 +293,17 @@ function App() {
       <main className="main-content">
         <MobileHeader profile={profile} open={() => setMobileNav(true)} />
         {notice && <div className="toast"><Check /> {notice}</div>}
-        {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} addToPlan={addToPlan} plannedIds={new Set(actions.filter((item) => item.status === 'planned').map((item) => item.recommendation_id))} openPlaybook={() => setView('playbook')} />}
-        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} buildLaunchKit={buildLaunchKit} saveLaunchKit={saveLaunchKit} />}
+        {view === 'dashboard' && <Dashboard profile={profile} data={briefing || fallbackBriefing} loading={loading} refresh={() => loadBriefing(profile, true)} addToPlan={addToPlan} plannedIds={new Set(actions.filter((item) => item.status === 'planned').map((item) => item.recommendation_id))} openPlaybook={() => setView('playbook')} openLearningLoop={() => { setView('playbook'); handleTourEvent('open_debrief') }} startJudgeTour={startJudgeTour} tourStepId={tourStep?.id} />}
+        {view === 'playbook' && <PlaybookView actions={actions} updateAction={updateAction} recordOutcome={recordOutcome} buildLaunchKit={buildLaunchKit} saveLaunchKit={saveLaunchKit} tourStepId={tourStep?.id} tourActionId={tour?.actionId} onTourEvent={handleTourEvent} />}
         {view === 'history' && <HistoryView profile={profile} />}
-        {view === 'settings' && <SettingsView profile={profile} reset={reset} resetDemo={startDemo} />}
+        {view === 'settings' && <SettingsView profile={profile} reset={reset} resetDemo={() => startDemo()} startJudgeTour={startJudgeTour} />}
       </main>
+      {tourStep && <GuidedJudgeTour step={tourStep} index={tour.index} editing={tour.editing} approved={tour.approved} onNext={advanceJudgeTour} onBack={() => goToTourStep(tour.index - 1)} onExit={exitJudgeTour} />}
     </div>
   )
 }
 
-function Onboarding({ onFinish, onDemo, loading }) {
+function Onboarding({ onFinish, onDemo, onJudgeTour, loading }) {
   const [step, setStep] = useState(1)
   const [profile, setProfile] = useState({ name: '', type: 'Independent coffee shop', location: '', goal: 'Grow weekday foot traffic' })
   const [sales, setSales] = useState([])
@@ -262,6 +363,7 @@ function Onboarding({ onFinish, onDemo, loading }) {
               {error && <p className="form-error">{error}</p>}
               <button className="primary-button full" onClick={next}>Next: add sales <ArrowRight size={17} /></button>
               <button className="demo-button" onClick={onDemo} disabled={loading}><Coffee /> <span><strong>{loading ? 'Preparing the story…' : 'See the coffee shop demo'}</strong><small>Includes a measured win and learning loop</small></span>{loading ? <LoaderCircle className="spin" /> : <ChevronRight />}</button>
+              <button className="judge-tour-launch" data-tour-launch onClick={onJudgeTour} disabled={loading}><Sparkles /> Start the two-minute judge tour <ArrowRight /></button>
             </>
           ) : (
             <>
@@ -291,13 +393,13 @@ function Sidebar({ profile, view, setView, open, close, actionCount }) {
 
 function MobileHeader({ profile, open }) { return <header className="mobile-header"><button onClick={open}><Menu /></button><Logo /><span className="mini-avatar">{profile.name.charAt(0)}</span></header> }
 
-function Dashboard({ profile, data, loading, refresh, addToPlan, plannedIds, openPlaybook }) {
+function Dashboard({ profile, data, loading, refresh, addToPlan, plannedIds, openPlaybook, openLearningLoop, startJudgeTour, tourStepId }) {
   const today = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
-  return <div className="dashboard"><header className="page-header"><div><p className="eyebrow">{today}</p><h1>Good morning, {profile.name.split(' ')[0]}.</h1><p>Here’s what your business world looks like today.</p></div><button className="refresh-button" onClick={refresh} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />} Refresh briefing</button></header>
+  return <div className="dashboard"><header className="page-header"><div><p className="eyebrow">{today}</p><h1>Good morning, {profile.name.split(' ')[0]}.</h1><p>Here’s what your business world looks like today.</p></div><div className="page-header-actions">{profile.name === demoProfile.name && <button className="judge-tour-restart" data-tour-launch onClick={startJudgeTour} disabled={loading}><Sparkles /> Restart judge tour</button>}<button className="refresh-button" onClick={refresh} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />} Refresh briefing</button></div></header>
     {loading && !data ? <BriefingSkeleton /> : <>
-      {data.recent_win?.outcome && <RecentWin action={data.recent_win} learningCount={data.learning_count} openPlaybook={openPlaybook} />}
+      {data.recent_win?.outcome && <RecentWin action={data.recent_win} learningCount={data.learning_count} openPlaybook={tourStepId === 'memory' ? openLearningLoop : openPlaybook} />}
       <section className="daily-glance"><div className="glance-label"><span>Today</span><strong>At a glance</strong></div><div className="glance-stat weather"><Sun /><div><strong>{Math.round(data.weather.current_temp)}°</strong><small>{data.weather.condition}</small></div></div><div className="glance-stat"><CalendarDays /><div><strong>{data.events.length}</strong><small>nearby events</small></div></div><div className="glance-stat"><TrendingUp /><div><strong>{data.sales_summary.trend_percent > 0 ? '+' : ''}{data.sales_summary.trend_percent}%</strong><small>7-day trend</small></div></div><span className={`live-pill ${data.live_weather ? '' : 'demo'}`}><i />{data.live_weather ? 'Weather live' : 'Demo weather'}</span></section>
-      <section className="advisor-section"><div className="section-heading"><div><span className="section-icon"><Sparkles /></span><div><p className="eyebrow">Your sidekick says</p><h2>Three moves worth making</h2></div></div><span className={`ai-mode provider-${data.advisor_mode}`}>{data.advisor_mode === 'anthropic' ? 'Powered by Claude' : data.advisor_mode === 'gemini' ? 'Gemini free tier' : 'Explainable local advisor'}</span></div><div className="recommendation-grid">{data.recommendations.map((recommendation, index) => <Recommendation key={recommendation.id || index} item={recommendation} index={index} addToPlan={addToPlan} isPlanned={plannedIds.has(recommendation.id)} />)}</div></section>
+      <section className="advisor-section"><div className="section-heading"><div><span className="section-icon"><Sparkles /></span><div><p className="eyebrow">Your sidekick says</p><h2>Three moves worth making</h2></div></div><span className={`ai-mode provider-${data.advisor_mode}`}>{data.advisor_mode === 'anthropic' ? 'Powered by Claude' : data.advisor_mode === 'gemini' ? 'Gemini free tier' : 'Explainable local advisor'}</span></div><div className="recommendation-grid">{data.recommendations.map((recommendation, index) => <Recommendation key={recommendation.id || index} item={recommendation} index={index} addToPlan={addToPlan} isPlanned={plannedIds.has(recommendation.id)} tourStepId={tourStepId} />)}</div></section>
       <section className="signals-section"><div className="section-heading simple"><div><p className="eyebrow">The signals</p><h2>What your sidekick is watching</h2></div></div><div className="signal-grid"><SalesPanel sales={data.sales} summary={data.sales_summary} /><WeatherPanel weather={data.weather} live={data.live_weather} /><EventsPanel events={data.events} source={data.events_source} updatedAt={data.events_updated_at} /></div></section>
       <footer className="dashboard-footer"><span><Sparkles /> Briefing prepared for {profile.name}</span><span>Sales × weather × local events</span></footer>
     </>}
@@ -306,18 +408,20 @@ function Dashboard({ profile, data, loading, refresh, addToPlan, plannedIds, ope
 
 function RecentWin({ action, learningCount, openPlaybook }) {
   const outcome = action.outcome
-  return <section className="recent-win"><span className="win-icon"><TrendingUp /></span><div><p className="eyebrow">Yesterday’s win · measured</p><h2>{action.title} finished <strong>${outcome.lift_amount.toLocaleString()} above baseline</strong></h2><p>${outcome.observed_sales.toLocaleString()} observed versus a ${outcome.baseline_sales.toLocaleString()} comparable-day baseline. Sidekick has learned from {learningCount} completed {learningCount === 1 ? 'action' : 'actions'}.</p></div><button onClick={openPlaybook}>See the learning loop <ArrowRight /></button></section>
+  return <section className="recent-win" data-tour-id="recent-win"><span className="win-icon"><TrendingUp /></span><div><p className="eyebrow">Yesterday’s win · measured</p><h2>{action.title} finished <strong>${outcome.lift_amount.toLocaleString()} above baseline</strong></h2><p>${outcome.observed_sales.toLocaleString()} observed versus a ${outcome.baseline_sales.toLocaleString()} comparable-day baseline. Sidekick has learned from {learningCount} completed {learningCount === 1 ? 'action' : 'actions'}.</p></div><button onClick={openPlaybook}>See the learning loop <ArrowRight /></button></section>
 }
 
-function Recommendation({ item, index, addToPlan, isPlanned }) {
+function Recommendation({ item, index, addToPlan, isPlanned, tourStepId }) {
   const icons = { rain: CloudRain, event: CalendarDays, spark: Lightbulb }
   const Icon = icons[item.icon] || Lightbulb
-  return <article className={`recommendation-card rec-${index}`}><div className="rec-top"><span className="rec-icon"><Icon /></span><span className="priority">{item.priority}</span><span className={`confidence confidence-${item.confidence || 'medium'}`}>{item.confidence || 'medium'} confidence</span></div><h3>{item.title}</h3><p className="action">{item.action}</p><EvidenceTrail item={item} /><div className="rec-footer"><div className="signal-tags">{item.signals?.map((signal) => <span key={signal}>{signal === 'sales' ? <BarChart3 /> : signal === 'weather' ? <CloudRain /> : <CalendarDays />}{signal}</span>)}</div><button className={`plan-button ${isPlanned ? 'planned' : ''}`} onClick={() => !isPlanned && addToPlan(item)}>{isPlanned ? <><Check /> In Playbook</> : <><Plus /> Put this in my plan</>}</button></div></article>
+  const tourTarget = index === 0
+  return <article className={`recommendation-card rec-${index}`}><div className="rec-top"><span className="rec-icon"><Icon /></span><span className="priority">{item.priority}</span><span className={`confidence confidence-${item.confidence || 'medium'}`}>{item.confidence || 'medium'} confidence</span></div><h3>{item.title}</h3><p className="action">{item.action}</p><EvidenceTrail item={item} forceOpen={tourTarget && tourStepId === 'evidence'} tourTarget={tourTarget} /><div className="rec-footer"><div className="signal-tags">{item.signals?.map((signal) => <span key={signal}>{signal === 'sales' ? <BarChart3 /> : signal === 'weather' ? <CloudRain /> : <CalendarDays />}{signal}</span>)}</div><button className={`plan-button ${isPlanned ? 'planned' : ''}`} data-tour-id={tourTarget ? 'recommendation-plan' : undefined} onClick={() => !isPlanned && addToPlan(item)}>{isPlanned ? <><Check /> In Playbook</> : <><Plus /> Put this in my plan</>}</button></div></article>
 }
 
-function EvidenceTrail({ item }) {
+function EvidenceTrail({ item, forceOpen = false, tourTarget = false }) {
   const [open, setOpen] = useState(false)
-  return <div className={`evidence-trail ${open ? 'open' : ''}`}><button onClick={() => setOpen(!open)}><span><Sparkles /> How I connected the dots</span><ChevronRight /></button>{open && <div className="evidence-body"><div className="evidence-flow">{(item.evidence || [item.why]).map((evidence, index) => <div key={evidence}><span>{evidence}</span>{index < (item.evidence || [item.why]).length - 1 && <b>+</b>}</div>)}</div><span className="flow-arrow">↓</span><strong>{item.title}</strong><p><Target /> Measure: {item.success_metric || 'Sales versus the comparable-day baseline'}</p></div>}</div>
+  const expanded = open || forceOpen
+  return <div className={`evidence-trail ${expanded ? 'open' : ''}`} data-tour-id={tourTarget ? 'recommendation-evidence' : undefined}><button aria-expanded={expanded} onClick={() => setOpen(!open)}><span><Sparkles /> How I connected the dots</span><ChevronRight /></button>{expanded && <div className="evidence-body"><div className="evidence-flow">{(item.evidence || [item.why]).map((evidence, index) => <div key={evidence}><span>{evidence}</span>{index < (item.evidence || [item.why]).length - 1 && <b>+</b>}</div>)}</div><span className="flow-arrow">↓</span><strong>{item.title}</strong><p><Target /> Measure: {item.success_metric || 'Sales versus the comparable-day baseline'}</p></div>}</div>
 }
 
 function SalesPanel({ sales, summary }) {
@@ -335,7 +439,7 @@ function EventsPanel({ events, source, updatedAt }) {
 
 function BriefingSkeleton() { return <div className="skeleton"><LoaderCircle className="spin" /><h2>Connecting the dots…</h2><p>Reading sales, weather, and what’s happening nearby.</p></div> }
 
-function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit, saveLaunchKit }) {
+function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit, saveLaunchKit, tourStepId, tourActionId, onTourEvent = () => {} }) {
   const [selected, setSelected] = useState(null)
   const [studioAction, setStudioAction] = useState(null)
   const [debriefAction, setDebriefAction] = useState(null)
@@ -343,13 +447,24 @@ function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit, sa
   const [error, setError] = useState('')
   const active = actions.filter((item) => item.status === 'planned')
   const measured = actions.filter((item) => item.outcome)
+  useEffect(() => {
+    if (tourStepId === 'debrief') {
+      const measuredAction = actions.find((item) => item.outcome)
+      if (measuredAction) setDebriefAction(measuredAction)
+    }
+    if (tourStepId === 'build') {
+      setDebriefAction(null)
+      setStudioAction(null)
+    }
+  }, [tourStepId, actions])
   async function openOrBuildKit(item) {
     setError('')
-    if (item.launch_kit) { setStudioAction(item); return }
+    if (item.launch_kit) { setStudioAction(item); onTourEvent('kit_opened'); return }
     setBuildingId(item.id)
     try {
       const launchKit = await buildLaunchKit(item.id)
       setStudioAction({ ...item, has_launch_kit: true, launch_kit: launchKit })
+      onTourEvent('kit_opened')
     } catch { setError('Sidekick could not build that kit right now. Your planned action is still safe.') }
     finally { setBuildingId(null) }
   }
@@ -361,12 +476,12 @@ function PlaybookView({ actions, updateAction, recordOutcome, buildLaunchKit, sa
       <header><span className={`status-pill ${item.status}`}>{item.outcome ? 'measured' : item.status}</span>{item.has_launch_kit && <span className={`kit-ready-pill ${item.launch_kit?.owner_approved ? 'approved' : ''}`}><CheckCircle2 /> {item.launch_kit?.owner_approved ? 'Owner approved' : 'Kit ready'}</span>}{item.is_demo && <span className="demo-data-pill">Demo data</span>}<time>{new Date(`${item.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</time></header>
       <h2>{item.title}</h2><p>{item.action}</p><div className="metric-line"><Target /><span><small>Success looks like</small><strong>{item.success_metric}</strong></span></div>
       {item.outcome ? <><div className={`outcome-result ${item.outcome.lift_amount >= 0 ? 'positive' : 'negative'}`}><TrendingUp /><div><span><strong>{item.outcome.lift_amount >= 0 ? '+' : '−'}${Math.abs(item.outcome.lift_amount).toLocaleString()}</strong> vs baseline</span><small>${item.outcome.observed_sales.toLocaleString()} observed · ${item.outcome.baseline_sales.toLocaleString()} usual · {item.outcome.redemptions || 0} code redemptions</small></div></div><button className="debrief-button" onClick={() => setDebriefAction(item)}><Sparkles /> Open Campaign Debrief <ArrowRight /></button></> : <div className="playbook-actions">{item.status === 'planned' ? <>
-        <button className={`launch-kit-button ${item.has_launch_kit ? 'ready' : ''}`} onClick={() => openOrBuildKit(item)} disabled={buildingId === item.id}>{buildingId === item.id ? <LoaderCircle className="spin" /> : item.has_launch_kit ? <CheckCircle2 /> : <Megaphone />} {buildingId === item.id ? 'Building your kit…' : item.has_launch_kit ? 'Open Launch Kit' : 'Build Launch Kit'}</button>
+        <button className={`launch-kit-button ${item.has_launch_kit ? 'ready' : ''}`} data-tour-id={tourStepId === 'build' && (!tourActionId || item.id === tourActionId) ? 'build-launch-kit' : undefined} onClick={() => openOrBuildKit(item)} disabled={buildingId === item.id}>{buildingId === item.id ? <LoaderCircle className="spin" /> : item.has_launch_kit ? <CheckCircle2 /> : <Megaphone />} {buildingId === item.id ? 'Building your kit…' : item.has_launch_kit ? 'Open Launch Kit' : 'Build Launch Kit'}</button>
         <button className="primary-button" onClick={() => updateAction(item.id, 'completed').catch(() => setError('Could not mark that action done.'))}><Check /> Mark as done</button><button className="quiet-button" onClick={() => updateAction(item.id, 'dismissed').catch(() => setError('Could not dismiss that action.'))}><X /> Dismiss</button>
       </> : item.status === 'completed' ? <button className="primary-button" onClick={() => setSelected(item)}><TrendingUp /> Log the result</button> : null}</div>}
     </article>)}</div> : <div className="empty-state"><ClipboardCheck /><h2>Your Playbook is ready for its first move</h2><p>Open the morning briefing and put one recommendation into your plan.</p></div>}
     {selected && <OutcomeModal action={selected} close={() => setSelected(null)} save={async (values) => { await recordOutcome(selected.id, values); setSelected(null) }} />}
-    {studioAction?.launch_kit && <LaunchKitStudio action={studioAction} kit={studioAction.launch_kit} close={() => setStudioAction(null)} refresh={async () => { const launchKit = await buildLaunchKit(studioAction.id, true); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} save={async (draft, approved) => { const launchKit = await saveLaunchKit(studioAction.id, draft, approved); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} />}
+    {studioAction?.launch_kit && <LaunchKitStudio action={studioAction} kit={studioAction.launch_kit} close={() => setStudioAction(null)} refresh={async () => { const launchKit = await buildLaunchKit(studioAction.id, true); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} save={async (draft, approved) => { const launchKit = await saveLaunchKit(studioAction.id, draft, approved); setStudioAction((current) => ({ ...current, launch_kit: launchKit })); return launchKit }} onTourEvent={onTourEvent} />}
     {debriefAction && <CampaignDebrief action={debriefAction} close={() => setDebriefAction(null)} />}
   </div>
 }
@@ -396,7 +511,7 @@ async function copyText(value) {
 
 function cloneLaunchKit(kit) { return JSON.parse(JSON.stringify(kit)) }
 
-export function LaunchKitStudio({ action, kit, close, refresh, save = async (draft) => draft }) {
+export function LaunchKitStudio({ action, kit, close, refresh, save = async (draft) => draft, onTourEvent = () => {} }) {
   const [copied, setCopied] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -433,7 +548,7 @@ export function LaunchKitStudio({ action, kit, close, refresh, save = async (dra
   }
   async function persist(approved) {
     setSaving(true); setError('')
-    try { const saved = await save(draft, approved); setDraft(cloneLaunchKit(saved)); setEditing(false) }
+    try { const saved = await save(draft, approved); setDraft(cloneLaunchKit(saved)); setEditing(false); if (approved) onTourEvent('kit_approved') }
     catch { setError('Sidekick could not save those edits. Check every field and try again.') }
     finally { setSaving(false) }
   }
@@ -442,12 +557,12 @@ export function LaunchKitStudio({ action, kit, close, refresh, save = async (dra
   return <div className="launch-studio-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
     <section className="launch-studio" role="dialog" aria-modal="true" aria-labelledby="launch-kit-title">
       <header className="studio-header"><div><span className="studio-mark"><Megaphone /></span><div><p className="eyebrow">Launch Kit Studio</p><h2 id="launch-kit-title">{displayKit.offer_name}</h2><p>Everything needed to turn this Playbook move into action.</p></div></div><button className="modal-close" onClick={close} aria-label="Close Launch Kit Studio"><X /></button></header>
-      <div className="studio-trust"><span><Sparkles /> Generated by {providerName}</span>{displayKit.owner_approved && <span className="owner-approved-pill"><CheckCircle2 /> Owner approved</span>}{action.is_demo && <span className="demo-data-pill">Demo action context</span>}<span>Copy only · nothing is sent or published</span></div>
+      <div className="studio-trust"><span><Sparkles /> Generated by {providerName}</span>{displayKit.owner_approved && <span className="owner-approved-pill" data-tour-id="owner-approved"><CheckCircle2 /> Owner approved</span>}{action.is_demo && <span className="demo-data-pill">Demo action context</span>}<span>Copy only · nothing is sent or published</span></div>
       {error && <p className="form-error">{error}</p>}
       <div className="studio-grid">
         <section className="studio-panel copy-panel"><div className="panel-heading"><div><Coffee /><span><small>Customer-ready copy</small><strong>Phone preview</strong></span></div><span>{displayKit.audience}</span></div>
           {editing && <div className="kit-editor copy-editor"><label>Campaign code<input value={draft.campaign_code || ''} maxLength="16" onChange={(event) => setDraft((current) => ({ ...current, campaign_code: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))} /></label><label>Social caption<textarea value={draft.customer_copy.social} onChange={(event) => updateCopy('social', event.target.value)} /></label><label>SMS <small>{draft.customer_copy.sms.length}/160</small><textarea maxLength="160" value={draft.customer_copy.sms} onChange={(event) => updateCopy('sms', event.target.value)} /></label><label>Sign headline<input value={draft.customer_copy.sign_headline} onChange={(event) => updateCopy('sign_headline', event.target.value)} /></label><label>Sign body<textarea value={draft.customer_copy.sign_body} onChange={(event) => updateCopy('sign_body', event.target.value)} /></label><p>Sidekick automatically keeps the campaign code in all three customer-facing artifacts.</p></div>}
-          <div className="campaign-code"><Tag /><div><small>Trackable campaign code</small><strong>{displayKit.campaign_code}</strong><span>Ask customers to mention this code; no POS connection required.</span></div><button aria-label="Copy campaign code" onClick={() => copy('code', displayKit.campaign_code)}><Copy /> {copied === 'code' ? 'Copied' : 'Copy'}</button></div>
+          <div className="campaign-code" data-tour-id="launch-kit-proof"><Tag /><div><small>Trackable campaign code</small><strong>{displayKit.campaign_code}</strong><span>Ask customers to mention this code; no POS connection required.</span></div><button aria-label="Copy campaign code" onClick={() => copy('code', displayKit.campaign_code)}><Copy /> {copied === 'code' ? 'Copied' : 'Copy'}</button></div>
           <div className="phone-preview"><div className="phone-speaker" /><div className="social-preview"><span className="mini-brand">J</span><div><strong>{action.profile_name}</strong><small>Post preview · not published</small></div></div><p>{displayKit.customer_copy.social}</p><div className="social-image"><span>{displayKit.customer_copy.sign_headline}</span><small>{displayKit.customer_copy.sign_body}</small></div></div>
           <div className="copy-row"><div><small>Social caption</small><p>{displayKit.customer_copy.social}</p></div><button aria-label="Copy social caption" onClick={() => copy('social', displayKit.customer_copy.social)}><Copy /> {copied === 'social' ? 'Copied' : 'Copy'}</button></div>
           <div className="copy-row sms-row"><div><small>SMS · {displayKit.customer_copy.sms.length}/160</small><p>{displayKit.customer_copy.sms}</p></div><button aria-label="Copy SMS message" onClick={() => copy('sms', displayKit.customer_copy.sms)}><Copy /> {copied === 'sms' ? 'Copied' : 'Copy'}</button></div>
@@ -457,7 +572,7 @@ export function LaunchKitStudio({ action, kit, close, refresh, save = async (dra
         <section className="studio-panel timing-panel"><div className="panel-heading"><div><Clock3 /><span><small>{displayKit.schedule.label}</small><strong>{scheduled.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</strong></span></div></div>{editing && <div className="schedule-editor"><label>Launch date<input type="date" value={draft.schedule.date} onChange={(event) => updateSchedule('date', event.target.value)} /></label><label>Launch time<input type="time" value={draft.schedule.time} onChange={(event) => updateSchedule('time', event.target.value)} /></label></div>}<button className="calendar-button" onClick={downloadCalendar}><CalendarPlus /> Download calendar task</button><p>No calendar account is connected or modified.</p></section>
         <section className="studio-panel measurement-panel"><div className="panel-heading"><div><Target /><span><small>Measurement plan</small><strong>Know whether it worked</strong></span></div></div><div className="baseline"><small>Comparable-day baseline</small><strong>${Number(displayKit.measurement.baseline_sales).toLocaleString()}</strong></div><p>{displayKit.measurement.metric}</p><span>Log sales and {displayKit.campaign_code} redemptions after the day ends.</span></section>
       </div>
-      <footer className="studio-footer"><p><CheckCircle2 /> {displayKit.owner_approved ? 'This version is owner approved.' : 'Your action stays planned until you mark it done.'}</p>{editing ? <><button className="quiet-button" onClick={() => { setDraft(cloneLaunchKit(kit)); setEditing(false); setError('') }}>Cancel</button><button className="secondary-button studio-save" onClick={() => persist(false)} disabled={saving}><Save /> Save draft</button><button className="primary-button" onClick={() => persist(true)} disabled={saving}>{saving ? <LoaderCircle className="spin" /> : <CheckCircle2 />} Save & approve</button></> : <><button className="quiet-button" onClick={regenerate} disabled={refreshing}>{refreshing ? <LoaderCircle className="spin" /> : <RefreshCw />} {refreshing ? 'Refreshing…' : 'Regenerate'}</button><button className="secondary-button studio-save" onClick={() => setEditing(true)}><Pencil /> Edit kit</button>{!displayKit.owner_approved && <button className="primary-button" onClick={() => persist(true)} disabled={saving}><CheckCircle2 /> Approve kit</button>}<button className="primary-button back-playbook" onClick={close}>Back to Playbook</button></>}</footer>
+      <footer className="studio-footer" data-tour-id="owner-control"><p><CheckCircle2 /> {displayKit.owner_approved ? 'This version is owner approved.' : 'Your action stays planned until you mark it done.'}</p>{editing ? <><button className="quiet-button" onClick={() => { setDraft(cloneLaunchKit(kit)); setEditing(false); setError('') }}>Cancel</button><button className="secondary-button studio-save" onClick={() => persist(false)} disabled={saving}><Save /> Save draft</button><button className="primary-button" onClick={() => persist(true)} disabled={saving}>{saving ? <LoaderCircle className="spin" /> : <CheckCircle2 />} Save & approve</button></> : <><button className="quiet-button" onClick={regenerate} disabled={refreshing}>{refreshing ? <LoaderCircle className="spin" /> : <RefreshCw />} {refreshing ? 'Refreshing…' : 'Regenerate'}</button><button className="secondary-button studio-save" onClick={() => { setEditing(true); onTourEvent('kit_editing') }}><Pencil /> Edit kit</button>{!displayKit.owner_approved && <button className="primary-button" onClick={() => persist(true)} disabled={saving}><CheckCircle2 /> Approve kit</button>}<button className="primary-button back-playbook" onClick={close}>Back to Playbook</button></>}</footer>
     </section>
   </div>
 }
@@ -476,7 +591,7 @@ export function CampaignDebrief({ action, close }) {
     window.addEventListener('keydown', handleKey); document.body.classList.add('launch-kit-open')
     return () => { window.removeEventListener('keydown', handleKey); document.body.classList.remove('launch-kit-open') }
   }, [close])
-  return <div className="debrief-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="campaign-debrief" role="dialog" aria-modal="true" aria-labelledby="debrief-title"><button className="modal-close" onClick={close} aria-label="Close Campaign Debrief"><X /></button><header><span><Sparkles /></span><div><p className="eyebrow">Campaign Debrief · Learning Receipt</p><h2 id="debrief-title">{action.title}</h2><p>{new Date(`${action.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p></div></header><div className={`debrief-verdict ${lift >= 0 ? 'positive' : 'negative'}`}><strong>{lift >= 0 ? '+' : '−'}${Math.abs(lift).toLocaleString()}</strong><div><h3>versus the comparable-day baseline</h3><p>Sales finished ${Math.abs(lift).toLocaleString()} {lift >= 0 ? 'above' : 'below'} baseline while this play was running. This is an association—not proof that the campaign caused the change.</p></div></div><div className="learning-timeline"><article><span><BarChart3 /></span><small>1 · Signals</small><h3>{signalLabel}</h3><p>{(action.evidence || [action.why]).join(' · ')}</p></article><i>→</i><article><span><Lightbulb /></span><small>2 · Recommendation</small><h3>{action.title}</h3><p>{action.action}</p></article><i>→</i><article><span><Megaphone /></span><small>3 · Launch Kit</small><h3>{kit ? kit.offer_name : 'Earlier manual play'}</h3><p>{kit ? `${kit.campaign_code} · ${kit.owner_approved ? 'Owner approved' : 'Draft kit'}` : 'This measured action predates Launch Kit tracking.'}</p></article><i>→</i><article><span><TrendingUp /></span><small>4 · Result</small><h3>${outcome.observed_sales.toLocaleString()} observed</h3><p>${outcome.baseline_sales.toLocaleString()} baseline · {redemptions} code redemptions</p></article><i>→</i><article className="lesson-step"><span><Sparkles /></span><small>5 · Lesson</small><h3>What Sidekick will do differently next time</h3><p>{lesson}</p></article></div><div className="debrief-details"><div><small>Owner’s note</small><p>{outcome.note || 'No note was recorded.'}</p></div><div><small>Measurement confidence</small><p>{redemptions > 0 ? 'Sales comparison + direct campaign-code response' : 'Sales comparison only; add a code next time for stronger attribution.'}</p></div></div><footer><p><Target /> Sidekick learns from measured patterns while keeping the owner in control.</p><button className="primary-button" onClick={close}>Back to Playbook</button></footer></section></div>
+  return <div className="debrief-scrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="campaign-debrief" role="dialog" aria-modal="true" aria-labelledby="debrief-title"><button className="modal-close" onClick={close} aria-label="Close Campaign Debrief"><X /></button><header><span><Sparkles /></span><div><p className="eyebrow">Campaign Debrief · Learning Receipt</p><h2 id="debrief-title">{action.title}</h2><p>{new Date(`${action.scheduled_for}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p></div></header><div className={`debrief-verdict ${lift >= 0 ? 'positive' : 'negative'}`}><strong>{lift >= 0 ? '+' : '−'}${Math.abs(lift).toLocaleString()}</strong><div><h3>versus the comparable-day baseline</h3><p>Sales finished ${Math.abs(lift).toLocaleString()} {lift >= 0 ? 'above' : 'below'} baseline while this play was running. This is an association—not proof that the campaign caused the change.</p></div></div><div className="learning-timeline"><article><span><BarChart3 /></span><small>1 · Signals</small><h3>{signalLabel}</h3><p>{(action.evidence || [action.why]).join(' · ')}</p></article><i>→</i><article><span><Lightbulb /></span><small>2 · Recommendation</small><h3>{action.title}</h3><p>{action.action}</p></article><i>→</i><article><span><Megaphone /></span><small>3 · Launch Kit</small><h3>{kit ? kit.offer_name : 'Earlier manual play'}</h3><p>{kit ? `${kit.campaign_code} · ${kit.owner_approved ? 'Owner approved' : 'Draft kit'}` : 'This measured action predates Launch Kit tracking.'}</p></article><i>→</i><article><span><TrendingUp /></span><small>4 · Result</small><h3>${outcome.observed_sales.toLocaleString()} observed</h3><p>${outcome.baseline_sales.toLocaleString()} baseline · {redemptions} code redemptions</p></article><i>→</i><article className="lesson-step" data-tour-id="debrief-lesson"><span><Sparkles /></span><small>5 · Lesson</small><h3>What Sidekick will do differently next time</h3><p>{lesson}</p></article></div><div className="debrief-details"><div><small>Owner’s note</small><p>{outcome.note || 'No note was recorded.'}</p></div><div><small>Measurement confidence</small><p>{redemptions > 0 ? 'Sales comparison + direct campaign-code response' : 'Sales comparison only; add a code next time for stronger attribution.'}</p></div></div><footer><p><Target /> Sidekick learns from measured patterns while keeping the owner in control.</p><button className="primary-button" onClick={close}>Back to Playbook</button></footer></section></div>
 }
 
 export function OutcomeModal({ action, close, save }) {
@@ -509,6 +624,61 @@ function HistoryView({ profile }) {
   return <div className="simple-page history-page"><p className="eyebrow">Past advice</p><h1>Your sidekick’s notebook</h1><p>Every generated briefing is saved here, so you can return to the moves that worked.</p>{loading ? <div className="history-loading"><LoaderCircle className="spin" /> Opening the notebook…</div> : history.length ? <div className="history-list">{history.map((entry, index) => <article key={`${entry.generated_at}-${index}`}><header><div><strong>{new Date(entry.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong><small>{new Date(entry.generated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</small></div><span>{entry.advisor_mode === 'claude' ? 'Claude advisor' : 'Demo advisor'}</span></header>{entry.recommendations.map((item) => <div className="history-rec" key={item.id}><Check /><div><strong>{item.title}</strong><p>{item.action}</p></div></div>)}</article>)}</div> : <div className="empty-state"><History /><h2>Your first briefing is today</h2><p>Return to the morning briefing and tap refresh to start building your history.</p></div>}</div>
 }
 
-function SettingsView({ profile, reset, resetDemo }) { return <div className="simple-page"><p className="eyebrow">Business profile</p><h1>{profile.name}</h1><p>The context your sidekick uses to tailor every recommendation.</p><div className="settings-card"><div><small>Business type</small><strong>{profile.type}</strong></div><div><small>Location</small><strong>{profile.location}</strong></div><div><small>Current focus</small><strong>{profile.goal}</strong></div><div><small>Sales days connected</small><strong>{profile.sales.length} days</strong></div>{profile.name === demoProfile.name && <button className="secondary-button demo-reset" onClick={resetDemo}><RotateCcw /> Reset recorded-demo story</button>}<button className="secondary-button" onClick={reset}>Start over with another business</button></div></div> }
+function GuidedJudgeTour({ step, index, editing, approved, onNext, onBack, onExit }) {
+  const [targetMissing, setTargetMissing] = useState(false)
+  const targetId = step.id === 'owner' && approved ? 'owner-approved' : step.target
+  const instruction = step.id === 'owner' && approved
+    ? 'The owner-approved version is saved. Sidekick remains the advisor, while the business owner keeps the final say.'
+    : step.id === 'owner' && editing
+      ? 'Make any useful edit, then choose Save & approve. Approval—not AI generation—is the final step.'
+      : step.instruction
+
+  useEffect(() => {
+    let highlighted = null
+    let observer = null
+    const locate = () => {
+      const target = document.querySelector(`[data-tour-id="${targetId}"]`)
+      if (!target) { setTargetMissing(true); return false }
+      highlighted = target
+      target.classList.add('tour-highlight')
+      setTargetMissing(false)
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      target.scrollIntoView?.({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' })
+      if (step.expectedEvent && !approved) {
+        const actionable = target.matches('button, input, textarea, select, a') ? target : target.querySelector('button, input, textarea, select, a')
+        actionable?.focus({ preventScroll: true })
+      }
+      observer?.disconnect()
+      return true
+    }
+    if (!locate()) {
+      observer = new MutationObserver(locate)
+      observer.observe(document.body, { childList: true, subtree: true })
+    }
+    return () => {
+      observer?.disconnect()
+      highlighted?.classList.remove('tour-highlight')
+    }
+  }, [targetId, step.expectedEvent, approved])
+
+  useEffect(() => {
+    const handleKey = (event) => { if (event.key === 'Escape') onExit() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onExit])
+
+  const canAdvance = Boolean(step.nextLabel) || targetMissing || (step.id === 'owner' && approved)
+  const nextLabel = step.id === 'owner' && approved ? 'Finish judge tour' : targetMissing ? 'Continue without highlight' : step.nextLabel
+  return <aside className={`judge-tour-coach tour-step-${step.id}`} aria-label="Guided judge tour" aria-live="polite">
+    <div className="tour-progress"><span style={{ width: `${(step.displayStep / 6) * 100}%` }} /></div>
+    <header><div><small>Judge tour · {step.displayStep} of 6</small><strong>{step.eyebrow}</strong></div><button onClick={onExit} aria-label="Exit judge tour"><X /></button></header>
+    <h2>{step.id === 'owner' && approved ? 'The owner has the final say' : step.title}</h2>
+    <p>{instruction}</p>
+    {targetMissing && <p className="tour-missing">The highlighted area is not available in this state. The tour can continue safely.</p>}
+    <footer>{index > 0 && <button className="tour-back" onClick={onBack}>Back</button>}<button className="tour-exit" onClick={onExit}>Exit tour</button>{canAdvance ? <button className="tour-next" onClick={onNext}>{nextLabel} <ArrowRight /></button> : <span className="tour-use-target"><Target /> Use the highlighted control</span>}</footer>
+  </aside>
+}
+
+function SettingsView({ profile, reset, resetDemo, startJudgeTour }) { return <div className="simple-page"><p className="eyebrow">Business profile</p><h1>{profile.name}</h1><p>The context your sidekick uses to tailor every recommendation.</p><div className="settings-card"><div><small>Business type</small><strong>{profile.type}</strong></div><div><small>Location</small><strong>{profile.location}</strong></div><div><small>Current focus</small><strong>{profile.goal}</strong></div><div><small>Sales days connected</small><strong>{profile.sales.length} days</strong></div>{profile.name === demoProfile.name && <><button className="secondary-button judge-settings-tour" data-tour-launch onClick={startJudgeTour}><Sparkles /> Restart two-minute judge tour</button><button className="secondary-button demo-reset" onClick={resetDemo}><RotateCcw /> Reset recorded-demo story</button></>}<button className="secondary-button" onClick={reset}>Start over with another business</button></div></div> }
 
 export default App
