@@ -64,6 +64,7 @@ The result is a closed learning loop: **counsel → execution → measurement �
 - Campaign Debrief / Learning Receipt tracing Signals → Recommendation → Launch Kit → Result → Lesson.
 - Same-weekday baseline and lift calculation, with language that treats lift as association rather than proof of causation.
 - Resettable, idempotent Juniper demo with a clearly labeled prior +$210 result.
+- Optional two-minute judge tour with six checkpoints, real-event progression, safe missing-target behavior, keyboard exit, and deterministic reset.
 - SQLite history, additive migrations, 15-minute event caching, and explicit offline mode.
 
 ## Technical shape and honest fallbacks
@@ -87,7 +88,7 @@ Python standard-library threaded HTTP server
 
 ## The Juniper Coffee demo story
 
-1. Click **See the coffee shop demo**.
+1. Click **Start the two-minute judge tour** for guided presentation, or **See the coffee shop demo** for manual exploration.
 2. Show the labeled prior action that finished **$210 above its comparable-day baseline**.
 3. Open its Campaign Debrief. Point out the association warning and the lesson that zero direct redemptions means attribution should improve.
 4. Expand the first event recommendation’s evidence trail.
@@ -103,10 +104,10 @@ Use the timed narration and exact cursor path in [`demo/RECORDING_GUIDE.md`](dem
 
 As of July 27, 2026:
 
-- **10 frontend tests pass.**
+- **14 frontend tests pass.**
 - **21 backend tests pass.**
 - The production Vite build passes.
-- Provider schemas, malformed-output fallback, event caching, offline behavior, demo reset, migration, campaign-code grounding, owner approval, redemptions, calendar content, copy actions, and non-causal Debrief language have automated coverage.
+- Provider schemas, malformed-output fallback, event caching, offline behavior, demo reset, migration, campaign-code grounding, owner approval, redemptions, calendar content, copy actions, non-causal Debrief language, and the complete guided-tour path have automated coverage.
 - An offline HTTP rehearsal completed demo reset → event recommendation → action → Launch Kit → edited campaign code/owner → approval → completion → measured redemption outcome.
 - The repository is pushed to `origin/main` with no known uncommitted product work.
 
@@ -130,7 +131,7 @@ Manual desktop/390px visual inspection, keyboard focus validation, live-key rehe
 | 3 | Run usability sessions 1–3 using the written protocol | `________` | Not started | Raw task times, success/failure, and participant wording are recorded honestly. |
 | 4 | Run sessions 4–5 and fix the single most common confusion | `________` | Not started | At least 4/5 reach and explain the Launch Kit flow, or the miss is documented and addressed. |
 | 5 | Configure free Gemini/Ticketmaster keys locally and rehearse live, partial-outage, and offline modes | `________` | Not started | Provider/source badges are correct and no mode produces a blank or unlabeled dashboard. |
-| 6 | Add one complete mocked lifecycle regression; begin feature freeze | `________` | Not started | Recommendation → kit → edit → approve → result → Debrief → reset passes in one test. |
+| 6 | Add the remaining outcome-and-reset UI regression; begin feature freeze | `________` | In progress | Guided recommendation → kit → edit → approve is covered; result → Debrief → reset remains to be joined into the same UI test. |
 | 7 | Record the clean primary and fully offline backup takes | `________` | Not started | Three timed rehearsals and both final captures finish below three minutes. |
 | 8 | Edit video, finalize submission copy, regression check, and contingency | `________` | Not started | Submission assets are uploaded, links work, tests/build pass, and no unsupported claim remains. |
 
@@ -146,7 +147,7 @@ npm install
 npm start
 ```
 
-Open `http://localhost:8000` and click **See the coffee shop demo**.
+Open `http://localhost:8000` and click **Start the two-minute judge tour** for the deterministic presentation path, or **See the coffee shop demo** to explore freely.
 
 Optional live services are configured in an uncommitted `.env` copied from `.env.example`:
 

@@ -24,15 +24,16 @@ npm run test:all
 npm start
 ```
 
-Open `http://localhost:8000` and click **See the coffee shop demo**. Do this before editing so you understand the intended story.
+Open `http://localhost:8000` and click **Start the two-minute judge tour**. Then exit and explore **See the coffee shop demo** without the coach card. Do both before editing so you understand the intended story and its manual fallback.
 
 Expected baseline:
 
-- 10 frontend tests pass.
+- 14 frontend tests pass.
 - 21 backend tests pass.
 - The production build succeeds.
 - The demo shows a prior measured result of **+$210 versus baseline**.
 - Settings contains **Reset recorded-demo story**.
+- The Juniper dashboard exposes **Restart judge tour**; non-demo profiles never expose it.
 
 ## Product promise and non-negotiables
 

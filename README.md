@@ -24,6 +24,7 @@ The ready-made story follows **Juniper Coffee Co.**, a Portland coffee shop tryi
 - A **Campaign Debrief / Learning Receipt** tracing Signals → Recommendation → Launch Kit → Result → Lesson with deliberately non-causal language.
 - A visible “Yesterday’s win” and recommendations informed by measured outcomes.
 - Resettable, idempotent recorded-demo story.
+- Optional, deterministic **two-minute judge tour** that highlights the measured win, evidence, Playbook, Launch Kit, and owner approval while advancing from real application events.
 - SQLite history and 15-minute event caching.
 - Explicit offline recording mode that never waits for external services.
 
@@ -37,9 +38,9 @@ npm install
 npm start
 ```
 
-Open [http://localhost:8000](http://localhost:8000), then click **See the coffee shop demo**.
+Open [http://localhost:8000](http://localhost:8000), then choose **See the coffee shop demo** for free exploration or **Start the two-minute judge tour** for the guided presentation path.
 
-The demo reset creates one clearly labeled prior action that earned **$210 above its comparable-day baseline**. It then generates a fresh briefing that learns from that result, but deliberately does not pre-build a Launch Kit. Put the first event recommendation into the Playbook and click **Build Launch Kit** to reveal the “Festival Fuel” demo beat. Reset it any time under **Business profile → Reset recorded-demo story**.
+The demo reset creates one clearly labeled prior action that earned **$210 above its comparable-day baseline**. It then generates a fresh briefing that learns from that result, but deliberately does not pre-build a Launch Kit. Put the first event recommendation into the Playbook and click **Build Launch Kit** to reveal the “Festival Fuel” demo beat. The judge tour performs this reset automatically; it never starts for a non-demo business and can be exited with Escape. Reset the unguided story any time under **Business profile → Reset recorded-demo story**.
 
 ## Zero-cost API setup
 
@@ -122,7 +123,7 @@ Dates use `YYYY-MM-DD`. A sample is available at [`demo/sample_sales.csv`](demo/
 
 ## Recorded submission
 
-Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:58 storyboard, narration, cursor path, Launch Kit reveal, Campaign Debrief, preflight checklist, and offline backup take.
+Use [`demo/RECORDING_GUIDE.md`](demo/RECORDING_GUIDE.md) for the exact 2:58 storyboard, guided and manual cursor paths, Launch Kit reveal, Campaign Debrief, preflight checklist, and offline backup take.
 
 Because no real business owner is available for testing, use [`demo/USABILITY_TEST.md`](demo/USABILITY_TEST.md) with five non-technical participants. Report completion rates and timing honestly; do not invent a testimonial.
 

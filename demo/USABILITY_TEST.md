@@ -42,3 +42,17 @@ Record only:
 | 5 | | | | | | | | | |
 
 Report the actual totals in the submission. If a threshold is missed, fix the most common confusion and rerun only the affected task; do not manufacture a quote or result.
+
+## Separate no-narration judge-tour rehearsal
+
+Do not combine these results with the unguided usability results above. Give the same five participants a fresh reset, ask them to click **Start the two-minute judge tour**, and provide no narration or coaching.
+
+Record whether each participant:
+
+- Completes all six checkpoints within two minutes.
+- Can explain the sequence as Signals → Recommendation → Launch Kit → Owner approval → Result → Lesson.
+- Understands that tour progression reflects real saved actions rather than a prerecorded animation.
+- Notices that seeded, fallback, cached, and live information remain labeled.
+- Can exit with Escape and restart from the same Juniper state.
+
+Target at least 4/5 completions within two minutes and 4/5 accurate explanations of the action-and-learning loop. Report misses honestly and change only the most frequent point of confusion.
