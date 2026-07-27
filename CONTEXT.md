@@ -1,6 +1,6 @@
 # Sidekick AI — Teammate and Coding-Agent Context
 
-Read this before changing the project. It is the short operational map; [`README.md`](README.md) is the user-facing setup and demo guide.
+Read this before changing the project. It is the technical operational map; [`PROJECT_SUMMARY.md`](PROJECT_SUMMARY.md) is the mixed-audience project snapshot, and [`README.md`](README.md) is the user-facing setup and demo guide.
 
 ## In one minute
 

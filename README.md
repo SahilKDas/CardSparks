@@ -1,6 +1,6 @@
 # Sidekick AI
 
-**Teammates and coding agents:** start with [`CONTEXT.md`](CONTEXT.md) for the architecture, contracts, guardrails, current tradeoffs, and safe next tasks.
+**New here?** Read [`PROJECT_SUMMARY.md`](PROJECT_SUMMARY.md) for the three-minute product, demo, status, and finish-plan overview. Teammates and coding agents should then read [`CONTEXT.md`](CONTEXT.md) for architecture, contracts, guardrails, and tradeoffs.
 
 Sidekick AI is a real-time business co-pilot for independent owners. It connects recent sales, weather, and nearby events, recommends three concrete moves, turns one into a ready-to-use **Launch Kit**, measures the result against a comparable-day baseline, and brings that learning into tomorrow’s advice.
 
