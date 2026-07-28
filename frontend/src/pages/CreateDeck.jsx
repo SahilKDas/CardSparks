@@ -81,7 +81,7 @@ export default function CreateDeck() {
 
   return (
     <div className="page create-page">
-      <div className="page-breadcrumb"><Link to="/"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
+      <div className="page-breadcrumb"><Link to="/decks"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
       <header className="create-header">
         <span className="eyebrow"><Icon name="sparkles" size={14} /> Make something memorable</span>
         <h1>Create a new deck</h1>
@@ -126,7 +126,7 @@ export default function CreateDeck() {
             {mode === 'ai' && <button className="text-button regenerate-link" type="button" onClick={() => { setCards([]); setTitle(''); }}><Icon name="refresh" size={15} /> Start over with a different prompt</button>}
           </section>
 
-          <div className="builder-footer"><Link className="button button-ghost" to="/">Cancel</Link><button className="button button-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? <><span className="button-spinner" /> Saving…</> : <><Icon name="save" size={17} /> Save deck</>}</button></div>
+          <div className="builder-footer"><Link className="button button-ghost" to="/decks">Cancel</Link><button className="button button-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? <><span className="button-spinner" /> Saving…</> : <><Icon name="save" size={17} /> Save deck</>}</button></div>
         </div>
       )}
     </div>

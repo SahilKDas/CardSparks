@@ -15,7 +15,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localh
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 const DECKS_KEY = 'cardsparks.demo.decks'
-const TOKEN_KEY = 'cardsparks.auth.token'
+export const TOKEN_KEY = 'cardsparks.auth.token'
 const wait = (ms = 320) => new Promise((resolve) => setTimeout(resolve, ms))
 const uid = (prefix = 'item') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -75,16 +75,17 @@ export async function request(path, options = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8500)
   const token = localStorage.getItem(TOKEN_KEY)
+  const { skipAuth = false, ...fetchOptions } = options
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Token ${token}` } : {}),
-        ...options.headers,
+        ...(!skipAuth && token ? { Authorization: `Token ${token}` } : {}),
+        ...fetchOptions.headers,
       },
     })
 
@@ -320,6 +321,7 @@ const realApi = {
     const payload = await request(`/api/auth/${mode === 'signup' ? 'signup' : 'login'}/`, {
       method: 'POST',
       body: JSON.stringify(credentials),
+      skipAuth: true,
     })
     const token = payload.token || payload.key || payload.access
     if (token) localStorage.setItem(TOKEN_KEY, token)

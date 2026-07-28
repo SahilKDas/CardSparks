@@ -77,7 +77,7 @@ export default function DeckDetail() {
     if (!window.confirm(`Delete “${deck.title}” and all of its cards? This cannot be undone.`)) return
     try {
       await deleteDeck(deck.id)
-      navigate('/')
+      navigate('/decks')
     } catch (requestError) {
       setLocalError(requestError.message)
     }
@@ -85,7 +85,7 @@ export default function DeckDetail() {
 
   return (
     <div className="page detail-page">
-      <div className="page-breadcrumb"><Link to="/"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
+      <div className="page-breadcrumb"><Link to="/decks"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
       <ErrorBanner message={localError || error} onDismiss={() => { setLocalError(''); setError('') }} />
 
       <header className={`deck-detail-header accent-${deck.color || 'coral'}`}>

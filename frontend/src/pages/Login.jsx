@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icons'
 import { useApp } from '../context/AppContext'
 
 export default function Login({ mode }) {
   const isSignup = mode === 'signup'
-  const { authenticate, continueAsGuest, isMockMode } = useApp()
+  const { authenticate, isMockMode } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -17,7 +18,8 @@ export default function Login({ mode }) {
     setError('')
     try {
       await authenticate(mode, form)
-      navigate('/')
+      const requestedPath = location.state?.from?.pathname
+      navigate(requestedPath || '/decks', { replace: true })
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -40,8 +42,6 @@ export default function Login({ mode }) {
           {error && <p className="field-error">{error}</p>}
           <button className="button button-primary auth-submit" type="submit" disabled={busy}>{busy ? 'One moment…' : isSignup ? 'Create account' : 'Sign in'} <Icon name="arrowRight" size={17} /></button>
         </form>
-        <div className="auth-divider"><span>or</span></div>
-        <button className="button button-secondary guest-button" type="button" onClick={() => { continueAsGuest(); navigate('/') }}>Continue as guest</button>
         <p className="auth-switch">{isSignup ? 'Already have an account?' : 'New to CardSparks?'} <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create one'}</Link></p>
       </section>
     </div>
