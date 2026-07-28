@@ -5,7 +5,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
-from .models import Deck, Card
+from django.db.models import F, Q, Count
+
+from .scheduling import apply_review
+from .models import Deck, Card, Review
 from .serializers import DeckSerializer, CardSerializer, StudyResultSerializer, StudySessionSerializer
 from .generation import GenerationError, generate_cards
 
@@ -16,7 +19,10 @@ class DeckViewSet(viewsets.ModelViewSet):
     serializer_class = DeckSerializer
 
     def get_queryset(self):
-        return Deck.objects.filter(owner=self.request.user).prefetch_related("cards")
+        now = timezone.now()
+        return (Deck.objects.filter(owner=self.request.user)
+                .prefetch_related("cards")
+                .annotate(due_cards=Count("cards", filter=Q(cards__due_at__isnull=True) | Q(cards__due_at__lte=now))))
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -28,30 +34,52 @@ class DeckViewSet(viewsets.ModelViewSet):
         serializer = StudySessionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        adjustments = {
-            result["cardId"]: (
-                MASTERY_ON_PASS if result["correct"] else MASTERY_ON_FAIL
-            ) for result in serializer.validated_data["results"]
-        }
-
+        grades = {r["cardId"]: r["grade"] for r in serializer.validated_data["results"]}
         now = timezone.now()
 
         with transaction.atomic():
-            cards = list(deck.cards.filter(id__in=adjustments.keys()))
+            cards = list(deck.cards.filter(id__in=grades.keys()))
+            reviews = []
 
             for card in cards:
-                updated = (card.mastery or 0.0) + adjustments[card.id]
-                card.mastery = max(0.0, min(1.0, updated))
+                result = apply_review(card, grades[card.id], now=now)
                 card.updated_at = now
+                reviews.append(Review(
+                    card=card,
+                    grade=grades[card.id],
+                    easiness_after=result.easiness,
+                    repetitions_after=result.repetitions,
+                    interval_days_after=result.interval_days
+                ))
 
             if cards:
-                Card.objects.bulk_update(cards, ["mastery", "updated_at"])
+                Card.objects.bulk_update(cards, ["easiness", "repetitions", "interval_days",
+                    "due_at", "last_reviewed_at", "lapses",
+                    "mastery", "updated_at"])
+                Review.objects.bulk_create(reviews)
 
-            deck.last_studied = now
-            deck.save(update_fields=["last_studied", "updated_at"])
+        deck.last_studied = now
+        deck.save(update_fields=["last_studied", "updated_at"])
+
 
         deck = self.get_queryset().get(pk=deck.pk)
         return Response(DeckSerializer(deck).data)
+
+    @action(detail=True, methods=["get"], url_path="study-queue")
+    def study_queue(self, request, pk=None):
+        deck = self.get_object()
+        now = timezone.now()
+
+        try:
+            limit = int(request.query_params.get("limit", 100))
+        except (TypeError, ValueError):
+            limit = 100
+
+        cards = deck.cards.filter(
+            Q(due_at__isnull=True) | Q(due_at__lte=now)
+        ).order_by(F('due_at').asc(nulls_first=True), "position")[:limit]
+
+        return Response({"cards": CardSerializer(cards, many=True).data})
 
     @action(detail=False, methods=["post"], url_path="generate")
     def generate_preview(self, request):

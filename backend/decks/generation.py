@@ -6,7 +6,7 @@ MAX_CARDS = 20
 DEFAULT_CARDS = 8
 LLM_TIMEOUT_MS = 9000
 
-SYSTEM_PROMPT = """You write flashcards for a study app.
+GEN_FLASHCARDS_SYSTEM_PROMPT = """You write flashcards for a study app.
 
 Return JSON only, in this exact shape:
 {"cards": [{"front": "question", "back": "answer"}]}
@@ -17,6 +17,17 @@ Rules:
 - "back" is a complete but concise answer, under 300 characters. Same exceptions for the "front" apply here.
 - No markdown, no numbering, no preamble.
 - Produce exactly the number of cards requested. 
+"""
+
+GEN_FEEDBACK_SYSTEM_PROMPT = """You write flashcards for a study app, and you also analyze flashcard study session data to give feedback to the end user.
+
+Return JSON only, in this exact shape:
+{"feedback": "A short paragraph of feedback"}
+
+Rules:
+- The feedback should be under 300 characters.
+- No markdown, no numbering, no preamble.
+
 """
 
 class GenerationError(Exception):
@@ -64,7 +75,7 @@ def generate_cards(topic, num_cards=DEFAULT_CARDS):
         response = client.chat.complete(
             model=MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": GEN_FLASHCARDS_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Write {count} flashcards, about the following topic or, if formatted like a request, on the following request: {topic}"}
             ],
             response_format={"type": "json_object"},
@@ -85,3 +96,11 @@ def generate_cards(topic, num_cards=DEFAULT_CARDS):
         raise GenerationError("The card generator returned no usable cards.")
 
     return cards[:count], min(len(cards), MAX_CARDS)
+
+def generate_feedback(data):
+    data = (data or "").strip()
+
+    if not data:
+        raise GenerationError("Data is not available.")
+
+    

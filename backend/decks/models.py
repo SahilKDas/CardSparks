@@ -34,6 +34,14 @@ class Card(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # for the SM-2 algorithm 
+    easiness = models.FloatField(default=2.5)
+    repetitions = models.PositiveIntegerField(default=0)
+    interval_days = models.PositiveIntegerField(default=0)
+    due_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_reviewed_at = models.DateTimeField(null=True, blank=True)
+    lapses = models.PositiveIntegerField(default=0)
+
     class Meta:
         ordering = ["position", "id"]
         constraints = [
@@ -42,3 +50,14 @@ class Card(models.Model):
 
     def __str__(self):
         return f'{self.front[:32]} / {self.back[:32]}'
+
+class Review(models.Model):
+    card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="reviews")
+    reviewed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    grade = models.PositiveIntegerField()
+    easiness_after = models.FloatField()
+    repetitions_after = models.PositiveIntegerField()
+    interval_days_after = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ['-reviewed_at', '-id']
