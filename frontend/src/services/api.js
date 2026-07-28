@@ -15,7 +15,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localh
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 const DECKS_KEY = 'cardsparks.demo.decks'
-export const TOKEN_KEY = 'cardsparks.auth.token'
+const TOKEN_KEY = 'cardsparks.auth.token'
 const wait = (ms = 320) => new Promise((resolve) => setTimeout(resolve, ms))
 const uid = (prefix = 'item') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
