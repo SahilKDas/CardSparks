@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation, Navigate } from 'react-router-dom'
 import { Icon } from '../components/Icons'
-
+import { useApp } from '../context/useApp'
 const steps = [
   {
     icon: 'wand',
@@ -23,6 +23,12 @@ const steps = [
 ]
 
 export default function Landing() {
+  const { isAuthenticated } = useApp()
+  const location = useLocation()
+
+  if (isAuthenticated) {
+    return <Navigate to="/decks" replace state={{ from: location }} />
+  }
   return (
     <div className="landing-page">
       <section className="landing-hero">
