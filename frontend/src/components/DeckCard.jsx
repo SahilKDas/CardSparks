@@ -3,12 +3,14 @@ import { Icon } from './Icons'
 
 export function relativeDate(date) {
   if (!date) return 'Not studied yet'
-  const difference = Date.now() - new Date(date).getTime()
+  const timestamp = new Date(date).getTime()
+  if (!Number.isFinite(timestamp)) return 'Study date unavailable'
+  const difference = Date.now() - timestamp
   const days = Math.max(0, Math.floor(difference / 86400000))
   if (days === 0) return 'Studied today'
   if (days === 1) return 'Studied yesterday'
   if (days < 7) return `Studied ${days} days ago`
-  return `Studied ${new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  return `Studied ${new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 }
 
 export default function DeckCard({ deck }) {
@@ -36,13 +38,16 @@ export default function DeckCard({ deck }) {
         <div className="deck-progress-label"><span>Mastery</span><strong>{progress}%</strong></div>
         <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
       </div>
-      <Link
-        to={`/decks/${deck.id}/study`}
-        className={`study-link ${total === 0 ? 'disabled' : ''} ${due === 0 && total > 0 ? 'is-quiet' : ''}`}
-        aria-disabled={total === 0}
-      >
-        <Icon name="play" size={15} /> {due > 0 ? `Review ${due} due` : 'Nothing due'}
-      </Link>
+      {total > 0 ? (
+        <Link
+          to={`/decks/${deck.id}/study`}
+          className={`study-link ${due === 0 ? 'is-quiet' : ''}`}
+        >
+          <Icon name="play" size={15} /> {due > 0 ? `Review ${due} due` : 'Nothing due'}
+        </Link>
+      ) : (
+        <span className="study-link disabled" aria-disabled="true"><Icon name="play" size={15} /> Add cards to study</span>
+      )}
     </article>
   )
 }

@@ -1,6 +1,6 @@
 # Frontend API assumptions
 
-This document is the handoff contract assumed by the React client. The repository did not contain backend code when the frontend branch was created, so these routes need to be reconciled with the DRF implementation.
+This document describes the contract shared by the React client and the Django REST Framework backend in this repository.
 
 ## Switching between mock and DRF
 
@@ -94,7 +94,7 @@ POST /api/decks/:id/generate/
 
 It should return the updated deck, either directly or under `{ "deck": ... }`. If the backend instead has only `/api/decks/generate/`, adjust `generateIntoDeck()` in `src/services/api.js` to send `deck_id` there.
 
-### Study progress (optional)
+### Study progress
 
 ```http
 POST /api/decks/:id/study-sessions/
@@ -107,19 +107,19 @@ POST /api/decks/:id/study-sessions/
 }
 ```
 
-The client expects the updated deck directly or under `{ "deck": ... }`. A missing optional endpoint does not prevent the session-complete screen; the mock adapter updates mastery by `+0.20` for “Got it” and `-0.12` for “Study again”.
+The client accepts the updated deck directly or under `{ "deck": ... }`. The session sends grades from `0` to `5`, stores review history, and updates the SM-2 schedule. Demo mode applies the same scheduling rules locally.
 
-### Authentication (optional during integration)
+### Authentication
 
 - `POST /api/auth/login/` with `{ "email": "...", "password": "..." }`
 - `POST /api/auth/signup/` with `{ "name": "...", "email": "...", "password": "..." }`
 
-The client recognizes a token in `token`, `key`, or `access`. The response may include a `user` object. Until these endpoints are finalized, guest and mock modes keep the demo unblocked.
+The client recognizes a token in `token`, `key`, or `access`; the current backend returns `token` and a `user` object. Learner routes require authentication in both API and UI layers.
 
 ## Error and CORS behavior
 
 - JSON errors may use `detail`, `message`, or DRF field-error arrays.
-- Requests time out after 12 seconds and surface a recoverable error banner.
+- Requests time out after 8.5 seconds and surface a recoverable error banner.
 - The backend should allow the configured Vite origin through `django-cors-headers` (or an equivalent policy).
 - All list/detail endpoints should enforce ownership server-side; UI filtering is not an authorization boundary.
 

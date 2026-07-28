@@ -44,7 +44,7 @@ def sm2(schedule: Schedule, grade: int):
 def derive_mastery(schedule: Schedule):
     if schedule.interval_days <= 0:
         return 0
-    return min(1.0, math.log1p(schedule.interval_days / math.log1p(MASTERY_HORIZON_DAYS)))
+    return min(1.0, math.log1p(schedule.interval_days) / math.log1p(MASTERY_HORIZON_DAYS))
 
 def apply_review(card: Card, grade: int, now=None):
     now = now or timezone.now()

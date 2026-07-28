@@ -1,4 +1,5 @@
-import os, json
+import json
+import os
 from mistralai.client import Mistral
 
 MODEL = "mistral-small-latest"
@@ -58,6 +59,12 @@ def extract_cards(payload):
             cards.append({"front": front, "back": back})
     return cards
 
+def extract_feedback(payload):
+    if not isinstance(payload, dict):
+        return ""
+    feedback = str(payload.get("feedback") or "").strip()
+    return feedback[:300]
+
 def generate_cards(topic, num_cards=DEFAULT_CARDS):
     topic = (topic or "").strip()
     if not topic:
@@ -83,24 +90,59 @@ def generate_cards(topic, num_cards=DEFAULT_CARDS):
             timeout_ms=LLM_TIMEOUT_MS
         )
     except Exception as err:
-        raise GenerationError(f"Card generation is unavailable right now.")
+        raise GenerationError("Card generation is unavailable right now.") from err
 
     try:
         msg = response.choices[0].message
         payload = (json.loads(str(msg.content)) if msg else None)
     except (AttributeError, IndexError, TypeError, json.JSONDecodeError) as err:
-        raise GenerationError(f"The card generator returned an unreadable response (Error: {str(err)})")
+        raise GenerationError("The card generator returned an unreadable response.") from err
 
     cards = extract_cards(payload)
     if not cards:
         raise GenerationError("The card generator returned no usable cards.")
 
-    return cards[:count], min(len(cards), MAX_CARDS)
+    selected = cards[:count]
+    return selected, len(selected)
 
 def generate_feedback(data):
-    data = (data or "").strip()
+    if isinstance(data, str):
+        data = data.strip()
+    elif data:
+        data = json.dumps(data, default=str)
+    else:
+        data = ""
 
     if not data:
         raise GenerationError("Data is not available.")
 
-    
+    api_key = os.getenv("MISTRAL_API_KEY")
+    if not api_key:
+        raise GenerationError("Feedback generation is not configured on the server (API key not provided).")
+
+    client = Mistral(api_key=api_key)
+
+    try:
+        response = client.chat.complete(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": GEN_FEEDBACK_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Analyze this study-session data and give the learner useful feedback: {data[:12000]}"},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.4,
+            timeout_ms=LLM_TIMEOUT_MS,
+        )
+    except Exception as err:
+        raise GenerationError("Feedback generation is unavailable right now.") from err
+
+    try:
+        message = response.choices[0].message
+        payload = json.loads(str(message.content)) if message else None
+    except (AttributeError, IndexError, TypeError, json.JSONDecodeError) as err:
+        raise GenerationError("The feedback generator returned an unreadable response.") from err
+
+    feedback = extract_feedback(payload)
+    if not feedback:
+        raise GenerationError("The feedback generator returned no usable feedback.")
+    return feedback

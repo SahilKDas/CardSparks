@@ -18,6 +18,7 @@ export const HARD_FACTOR = 1.2
 export const MAX_INTERVAL_DAYS = 36500
 
 export function sm2(schedule, grade) {
+  if (!Number.isInteger(grade) || grade < 0 || grade > 5) throw new RangeError('Grade must be an integer between 0 and 5.')
   const gap = 5 - grade
   const easiness = Math.max(MIN_EASINESS, schedule.easiness + (0.1 - gap * (0.08 + gap * 0.02)))
 
@@ -54,6 +55,7 @@ export function scheduleOf(card) {
 }
 
 export function formatInterval(days) {
+  if (!Number.isFinite(days)) return 'Not scheduled'
   if (!days || days < 1) return '<1d'
   if (days < 30) return `${Math.round(days)}d`
   if (days < 365) return `${Math.round(days / 30)}mo`
@@ -67,14 +69,19 @@ export function previewFor(card, grade) {
 
 export function isDue(card, now = Date.now()) {
   if (!card?.dueAt) return true
-  return new Date(card.dueAt).getTime() <= now
+  const due = new Date(card.dueAt).getTime()
+  return !Number.isFinite(due) || due <= now
 }
 
 export function byDueDate(a, b) {
   if (!a.dueAt && !b.dueAt) return (a.position ?? 0) - (b.position ?? 0)
   if (!a.dueAt) return -1
   if (!b.dueAt) return 1
-  return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+  const aTime = new Date(a.dueAt).getTime()
+  const bTime = new Date(b.dueAt).getTime()
+  if (!Number.isFinite(aTime)) return -1
+  if (!Number.isFinite(bTime)) return 1
+  return aTime - bTime
 }
 
 export function dueCount(cards = [], now = Date.now()) {

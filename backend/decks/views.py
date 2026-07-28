@@ -1,7 +1,7 @@
-from django.shortcuts import render
 from django.db.models import Max
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import APIView, action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
@@ -9,7 +9,7 @@ from django.db.models import F, Q, Count
 
 from .scheduling import apply_review
 from .models import Deck, Card, Review
-from .serializers import DeckSerializer, CardSerializer, StudyResultSerializer, StudySessionSerializer
+from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer
 from .generation import GenerationError, generate_cards
 from .stats import build_stats
 
@@ -40,6 +40,11 @@ class DeckViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             cards = list(deck.cards.filter(id__in=grades.keys()))
+            found_ids = {card.id for card in cards}
+            missing_ids = sorted(set(grades) - found_ids)
+            if missing_ids:
+                raise ValidationError({"results": f"Cards do not belong to this deck: {missing_ids}"})
+
             reviews = []
 
             for card in cards:
@@ -75,6 +80,7 @@ class DeckViewSet(viewsets.ModelViewSet):
             limit = int(request.query_params.get("limit", 100))
         except (TypeError, ValueError):
             limit = 100
+        limit = max(1, min(limit, 100))
 
         cards = deck.cards.filter(
             Q(due_at__isnull=True) | Q(due_at__lte=now)

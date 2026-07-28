@@ -16,6 +16,7 @@ export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 const DECKS_KEY = 'cardsparks.demo.decks'
 export const TOKEN_KEY = 'cardsparks.auth.token'
+export const AUTH_EXPIRED_EVENT = 'cardsparks:auth-expired'
 const wait = (ms = 320) => new Promise((resolve) => setTimeout(resolve, ms))
 const uid = (prefix = 'item') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -38,36 +39,71 @@ function writeDecks(decks) {
   return decks
 }
 
+function firstErrorMessage(value) {
+  if (typeof value === 'string' && value.trim()) return value
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const message = firstErrorMessage(item)
+      if (message) return message
+    }
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
+      const message = firstErrorMessage(item)
+      if (message) return message
+    }
+  }
+  return ''
+}
+
+export class ApiError extends Error {
+  constructor(message, status, payload = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.payload = payload
+  }
+}
+
+function finiteNumber(value, fallback = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+
 export function normalizeCard(card) {
+  const mastery = finiteNumber(card.mastery, 0)
   return {
     ...card,
     id: String(card.id),
-    front: card.front || card.question || '',
-    back: card.back || card.answer || '',
-    mastery: Number(card.mastery ?? 0),
-    position: Number(card.position ?? 0),
-    easiness: Number(card.easiness ?? DEFAULT_EASINESS),
-    repetitions: Number(card.repetitions ?? 0),
-    intervalDays: Number(card.intervalDays ?? card.interval_days ?? 0),
-    lapses: Number(card.lapses ?? 0),
+    front: String(card.front || card.question || ''),
+    back: String(card.back || card.answer || ''),
+    mastery: Math.max(0, Math.min(1, mastery)),
+    position: Math.max(0, finiteNumber(card.position, 0)),
+    easiness: Math.max(1.3, finiteNumber(card.easiness, DEFAULT_EASINESS)),
+    repetitions: Math.max(0, finiteNumber(card.repetitions, 0)),
+    intervalDays: Math.max(0, finiteNumber(card.intervalDays ?? card.interval_days, 0)),
+    lapses: Math.max(0, finiteNumber(card.lapses, 0)),
     dueAt: card.dueAt || card.due_at || null,
     lastReviewedAt: card.lastReviewedAt || card.last_reviewed_at || null,
   }
 }
 
 function normalizeDeck(deck) {
-  const cards = (deck.cards || deck.flashcards || []).map(normalizeCard)
+  const rawCards = deck.cards || deck.flashcards || []
+  const cards = Array.isArray(rawCards)
+    ? rawCards.filter((card) => card && typeof card === 'object').map(normalizeCard)
+    : []
   const reportedDue = deck.dueCount ?? deck.due_count
   return {
     ...deck,
     id: String(deck.id),
-    title: deck.title || deck.name || 'Untitled deck',
-    description: deck.description || '',
+    title: String(deck.title || deck.name || 'Untitled deck'),
+    description: String(deck.description || ''),
     lastStudied: deck.lastStudied || deck.last_studied || null,
     createdAt: deck.createdAt || deck.created_at,
     updatedAt: deck.updatedAt || deck.updated_at,
     cards,
-    dueCount: typeof reportedDue === 'number' ? reportedDue : dueCount(cards),
+    dueCount: Number.isFinite(Number(reportedDue)) ? Math.max(0, Number(reportedDue)) : dueCount(cards),
   }
 }
 
@@ -91,8 +127,9 @@ export async function request(path, options = {}) {
 
     const payload = response.status === 204 ? null : await response.json().catch(() => null)
     if (!response.ok) {
-      const message = payload?.detail || payload?.message || Object.values(payload || {})[0] || `Request failed (${response.status})`
-      throw new Error(Array.isArray(message) ? message[0] : message)
+      if (response.status === 401 && !skipAuth) window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+      const message = firstErrorMessage(payload) || `Request failed (${response.status})`
+      throw new ApiError(message, response.status, payload)
     }
     return payload
   } catch (error) {
@@ -264,7 +301,9 @@ const mockApi = {
 const realApi = {
   async listDecks() {
     const data = await request('/api/decks/')
-    return (data.results || data).map(normalizeDeck)
+    const decks = Array.isArray(data) ? data : data?.results
+    if (!Array.isArray(decks)) throw new Error('The server returned an invalid deck list.')
+    return decks.map(normalizeDeck)
   },
   async getDeck(id) {
     return normalizeDeck(await request(`/api/decks/${id}/`))
@@ -318,6 +357,7 @@ const realApi = {
     return normalizeDeck(payload.deck || payload)
   },
   async authenticate(mode, credentials) {
+    localStorage.removeItem(TOKEN_KEY)
     const payload = await request(`/api/auth/${mode === 'signup' ? 'signup' : 'login'}/`, {
       method: 'POST',
       body: JSON.stringify(credentials),

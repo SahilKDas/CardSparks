@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import CardEditor, { blankCard } from '../components/CardEditor'
 import { ErrorBanner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 
 const colorOptions = ['coral', 'violet', 'blue', 'green', 'yellow']
 
@@ -70,7 +70,12 @@ export default function CreateDeck() {
     setSaving(true)
     setLocalError('')
     try {
-      const deck = await createDeck({ title: title.trim(), description: description.trim(), emoji, color, cards: completeCards })
+      const cleanedCards = completeCards.map((card) => ({
+        ...card,
+        front: card.front.trim(),
+        back: card.back.trim(),
+      }))
+      const deck = await createDeck({ title: title.trim(), description: description.trim(), emoji, color, cards: cleanedCards })
       navigate(`/decks/${deck.id}`)
     } catch (error) {
       setLocalError(error.message)
@@ -98,7 +103,7 @@ export default function CreateDeck() {
       {mode === 'ai' && cards.length === 0 ? (
         <section className="creation-panel ai-generator-panel">
           <div className="panel-heading"><span className="big-panel-icon"><Icon name="wand" size={25} /></span><div><h2>What do you want to learn?</h2><p>Be specific for sharper, more useful cards.</p></div></div>
-          <label className="field-label">Topic or prompt<textarea value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={'Try “Photosynthesis for AP Biology” or “Spanish past-tense verbs with examples”'} rows="4" /></label>
+          <label className="field-label">Topic or prompt<textarea value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={'Try “Photosynthesis for AP Biology” or “Spanish past-tense verbs with examples”'} rows="4" maxLength="1000" /></label>
           <div className="generator-row">
             <label className="field-label compact">Number of cards<select value={numCards} onChange={(event) => setNumCards(Number(event.target.value))}><option value="5">5 cards</option><option value="8">8 cards</option><option value="10">10 cards</option><option value="15">15 cards</option><option value="20">20 cards</option></select></label>
             <button className="button button-primary generate-button" type="button" onClick={handleGenerate} disabled={generating}>{generating ? <><span className="button-spinner" /> Creating your cards…</> : <><Icon name="sparkles" size={18} /> Generate cards</>}</button>
@@ -110,8 +115,8 @@ export default function CreateDeck() {
           <section className="creation-panel deck-details-panel">
             <div className="panel-heading compact-heading"><div><h2>Deck details</h2><p>Give this collection a clear identity.</p></div></div>
             <div className="deck-details-grid">
-              <label className="emoji-picker">Cover<input value={emoji} onChange={(event) => setEmoji(event.target.value.slice(0, 2))} maxLength="2" aria-label="Deck emoji" /></label>
-              <label className="field-label">Deck name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cell Biology Essentials" /></label>
+              <label className="emoji-picker">Cover<input value={emoji} onChange={(event) => setEmoji(Array.from(event.target.value).slice(0, 4).join(''))} maxLength="8" aria-label="Deck emoji" /></label>
+              <label className="field-label">Deck name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cell Biology Essentials" maxLength="256" /></label>
               <label className="field-label wide">Description <span>Optional</span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What will this deck help you remember?" /></label>
               <div className="field-label color-field">Accent color<div className="color-options">{colorOptions.map((option) => <button key={option} type="button" className={`${option} ${color === option ? 'selected' : ''}`} onClick={() => setColor(option)} aria-label={`Use ${option} accent`}><Icon name="check" size={13} /></button>)}</div></div>
             </div>
@@ -123,7 +128,7 @@ export default function CreateDeck() {
               {cards.map((card, index) => <CardEditor key={card.id} card={card} index={index} onChange={(next) => updateCard(index, next)} onDelete={() => deleteCard(index)} />)}
             </div>
             <button className="add-card-button" type="button" onClick={() => setCards((current) => [...current, blankCard()])}><Icon name="plus" size={18} /> Add another card</button>
-            {mode === 'ai' && <button className="text-button regenerate-link" type="button" onClick={() => { setCards([]); setTitle(''); }}><Icon name="refresh" size={15} /> Start over with a different prompt</button>}
+            {mode === 'ai' && <button className="text-button regenerate-link" type="button" onClick={() => { setCards([]); setTitle(''); setDescription(''); setLocalError('') }}><Icon name="refresh" size={15} /> Start over with a different prompt</button>}
           </section>
 
           <div className="builder-footer"><Link className="button button-ghost" to="/decks">Cancel</Link><button className="button button-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? <><span className="button-spinner" /> Saving…</> : <><Icon name="save" size={17} /> Save deck</>}</button></div>

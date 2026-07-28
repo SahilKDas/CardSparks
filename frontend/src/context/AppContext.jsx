@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { api, TOKEN_KEY, USE_MOCK_API } from '../services/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, AUTH_EXPIRED_EVENT, TOKEN_KEY, USE_MOCK_API } from '../services/api'
+import { AppContext } from './useApp'
 
-const AppContext = createContext(null)
 const USER_KEY = 'cardsparks.user'
 
 function readStoredUser() {
@@ -32,9 +32,22 @@ export function AppProvider({ children }) {
   const [decks, setDecks] = useState([])
   const [loading, setLoading] = useState(isAuthenticated)
   const [error, setError] = useState('')
-  const [theme, setTheme] = useState(() => localStorage.getItem('cardsparks.theme') || 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('cardsparks.theme') === 'dark' ? 'dark' : 'light')
+  const refreshGeneration = useRef(0)
+
+  const clearSession = useCallback(() => {
+    refreshGeneration.current += 1
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+    setDecks([])
+    setError('')
+    setLoading(false)
+    setSession({ user: null, isAuthenticated: false })
+  }, [])
 
   const refreshDecks = useCallback(async () => {
+    const generation = refreshGeneration.current + 1
+    refreshGeneration.current = generation
     if (!isAuthenticated) {
       setDecks([])
       setLoading(false)
@@ -44,17 +57,28 @@ export function AppProvider({ children }) {
     setLoading(true)
     setError('')
     try {
-      setDecks(await api.listDecks())
+      const latest = await api.listDecks()
+      if (generation === refreshGeneration.current) setDecks(latest)
     } catch (requestError) {
+      if (generation !== refreshGeneration.current) return
+      if (requestError.status === 401) {
+        clearSession()
+        return
+      }
       setError(requestError.message)
     } finally {
-      setLoading(false)
+      if (generation === refreshGeneration.current) setLoading(false)
     }
-  }, [isAuthenticated])
+  }, [clearSession, isAuthenticated])
 
   useEffect(() => {
     refreshDecks()
   }, [refreshDecks])
+
+  useEffect(() => {
+    window.addEventListener(AUTH_EXPIRED_EVENT, clearSession)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, clearSession)
+  }, [clearSession])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -69,10 +93,14 @@ export function AppProvider({ children }) {
       setDecks(latest)
       return result
     } catch (requestError) {
+      if (requestError.status === 401) {
+        clearSession()
+        throw requestError
+      }
       setError(requestError.message)
       throw requestError
     }
-  }, [])
+  }, [clearSession])
 
   const getStudyQueue = useCallback((deckId, limit) => api.getStudyQueue(deckId, limit), [])
 
@@ -106,21 +134,10 @@ export function AppProvider({ children }) {
       return payload
     },
     logout: () => {
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
-      setDecks([])
-      setError('')
-      setLoading(false)
-      setSession({ user: null, isAuthenticated: false })
+      clearSession()
     },
     isMockMode: USE_MOCK_API,
-  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user, isAuthenticated])
+  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user, isAuthenticated, clearSession])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
-}
-
-export function useApp() {
-  const context = useContext(AppContext)
-  if (!context) throw new Error('useApp must be used inside AppProvider')
-  return context
 }

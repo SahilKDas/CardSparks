@@ -47,7 +47,7 @@ npm run preview  # serve the production build locally
 - AI generation preview with editable/deletable cards before saving
 - Deck detail editing, card CRUD, deck deletion, and AI generation into an existing deck
 - Study mode with flip animation, previous/next navigation, recall ratings, completion summary, and local mastery updates
-- Login/signup forms plus a guest path; demo mode accepts any non-empty email/password
+- Login/signup forms with protected learner routes; demo mode accepts any non-empty email/password
 - Responsive navigation and light/dark themes
 
 ## Project structure
@@ -61,5 +61,5 @@ src/
   services/    Real DRF client and persistent mock adapter
 ```
 
-The frontend intentionally does not require or modify a backend directory.
+The frontend can run independently in mock mode or connect to the Django API in `../backend`.
 

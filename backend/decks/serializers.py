@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 from django.utils import timezone
 from .models import Deck, Card
 
@@ -29,11 +30,12 @@ class DeckSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         cards_data = validated_data.pop("cards", [])
-        deck = Deck.objects.create(**validated_data)
-        Card.objects.bulk_create([
-            Card(deck=deck, front=card["front"], back=card["back"], position=index)
-            for index, card in enumerate(cards_data)
-        ])
+        with transaction.atomic():
+            deck = Deck.objects.create(**validated_data)
+            Card.objects.bulk_create([
+                Card(deck=deck, front=card["front"], back=card["back"], position=index)
+                for index, card in enumerate(cards_data)
+            ])
         return deck
 
     def update(self, instance, validated_data):
@@ -62,4 +64,10 @@ class StudyResultSerializer(serializers.Serializer):
 
 
 class StudySessionSerializer(serializers.Serializer):
-    results = StudyResultSerializer(many=True, allow_empty=True)
+    results = StudyResultSerializer(many=True, allow_empty=False)
+
+    def validate_results(self, value):
+        card_ids = [result["cardId"] for result in value]
+        if len(card_ids) != len(set(card_ids)):
+            raise serializers.ValidationError("Each card may appear only once per study session.")
+        return value

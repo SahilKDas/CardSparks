@@ -94,7 +94,21 @@ function streaksFrom(series) {
   return { current, longest }
 }
 
-export function getStats({ days = 365, horizon = 30 } = {}) {
-  if (USE_MOCK_API) return mockStats({ days, horizon })
-  return request(`/api/stats/?days=${days}&horizon=${horizon}`)
+function validateStats(payload) {
+  const valid = payload
+    && payload.totals
+    && payload.retention
+    && payload.streak
+    && Array.isArray(payload.heatmap)
+    && Array.isArray(payload.forecast)
+    && typeof payload.backlog === 'number'
+  if (!valid) throw new Error('The server returned invalid progress data.')
+  return payload
+}
+
+export async function getStats({ days = 365, horizon = 30 } = {}) {
+  const payload = USE_MOCK_API
+    ? await mockStats({ days, horizon })
+    : await request(`/api/stats/?days=${days}&horizon=${horizon}`)
+  return validateStats(payload)
 }

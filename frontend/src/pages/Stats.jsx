@@ -160,6 +160,7 @@ export default function Stats() {
   }
 
   const { totals, retention, streak, backlog, heatmap, forecast } = stats
+  const forecastTotal = forecast.reduce((sum, day) => sum + day.count, 0)
   const percent = (value) => value === null || value === undefined ? '—' : `${Math.round(value * 100)}%`
 
   if (!totals.reviews) {
@@ -195,7 +196,7 @@ export default function Stats() {
         <div className="stat-tile">
           <span className="stat-label">Current streak</span>
           <strong>{streak.current} {streak.current === 1 ? 'day' : 'days'}</strong>
-          <small>Longest {streak.longest} days</small>
+          <small>Longest {streak.longest} {streak.longest === 1 ? 'day' : 'days'}</small>
         </div>
         <div className="stat-tile">
           <span className="stat-label">Mature cards</span>
@@ -227,7 +228,7 @@ export default function Stats() {
       <section className="stat-section">
         <div className="stat-section-head">
           <h2>Coming up</h2>
-          <span>{forecast.reduce((sum, day) => sum + day.count, 0)} cards over 30 days</span>
+          <span>{forecastTotal} {forecastTotal === 1 ? 'card' : 'cards'} over 30 days</span>
         </div>
         <Forecast days={forecast} backlog={backlog} />
       </section>

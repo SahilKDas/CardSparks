@@ -1,0 +1,29 @@
+import django.core.validators
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("decks", "0002_card_due_at_card_easiness_card_interval_days_and_more"),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name="review",
+            name="grade",
+            field=models.PositiveIntegerField(
+                validators=[
+                    django.core.validators.MinValueValidator(0),
+                    django.core.validators.MaxValueValidator(5),
+                ]
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="review",
+            constraint=models.CheckConstraint(
+                condition=models.Q(grade__gte=0, grade__lte=5),
+                name="review_grade_between_0_and_5",
+            ),
+        ),
+    ]

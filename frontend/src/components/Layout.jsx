@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { useState } from 'react'
-import { useApp } from '../context/AppContext'
+import { useEffect, useRef, useState } from 'react'
+import { useApp } from '../context/useApp'
 import { Icon } from './Icons'
 
 function Logo({ destination }) {
@@ -15,7 +15,31 @@ function Logo({ destination }) {
 export default function Layout() {
   const { theme, toggleTheme, user, logout, isMockMode, isAuthenticated } = useApp()
   const [profileOpen, setProfileOpen] = useState(false)
+  const profileWrap = useRef(null)
+  const mobileProfileButton = useRef(null)
   const initials = (user?.name || user?.email || 'Learner').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+
+  useEffect(() => {
+    if (!profileOpen) return undefined
+    const closeProfile = (event) => {
+      const clickedOutside = event.type === 'pointerdown'
+        && !profileWrap.current?.contains(event.target)
+        && !mobileProfileButton.current?.contains(event.target)
+      if (event.key === 'Escape' || clickedOutside) {
+        setProfileOpen(false)
+      }
+    }
+    document.addEventListener('keydown', closeProfile)
+    document.addEventListener('pointerdown', closeProfile)
+    return () => {
+      document.removeEventListener('keydown', closeProfile)
+      document.removeEventListener('pointerdown', closeProfile)
+    }
+  }, [profileOpen])
+
+  useEffect(() => {
+    if (!isAuthenticated) setProfileOpen(false)
+  }, [isAuthenticated])
 
   return (
     <div className={`app-shell ${isAuthenticated ? 'authenticated' : 'public'}`}>
@@ -37,7 +61,7 @@ export default function Layout() {
             <button className="icon-button" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
               <Icon name={theme === 'light' ? 'moon' : 'sun'} size={19} />
             </button>
-            {isAuthenticated ? <div className="profile-wrap">
+            {isAuthenticated ? <div className="profile-wrap" ref={profileWrap}>
               <button className="avatar-button" type="button" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}>
                 {initials}
               </button>
@@ -61,7 +85,7 @@ export default function Layout() {
         <NavLink to="/decks" end><Icon name="grid" size={20} /><span>Decks</span></NavLink>
         <NavLink to="/stats"><Icon name="clock" size={20} /><span>Progress</span></NavLink>
         <NavLink to="/decks/new"><span className="mobile-create"><Icon name="plus" size={22} /></span><span>Create</span></NavLink>
-        <NavLink to="/login"><span className="mobile-avatar">{initials}</span><span>Profile</span></NavLink>
+        <button ref={mobileProfileButton} type="button" className={profileOpen ? 'active' : ''} onClick={() => setProfileOpen((value) => !value)}><span className="mobile-avatar">{initials}</span><span>Profile</span></button>
       </nav>}
     </div>
   )

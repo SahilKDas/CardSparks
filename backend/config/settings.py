@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,19 +22,39 @@ load_dotenv(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-ALLOWED_HOSTS = []
+def env_list(name, default):
+    value = os.getenv(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173'
-]
+
+# SECURITY WARNING: don't run with debug turned on in production.
+DEBUG = env_bool("DJANGO_DEBUG", True)
+
+# Local development works without a private .env file, but production fails
+# closed instead of silently running with a known key.
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY is required when DJANGO_DEBUG is false.")
+    SECRET_KEY = "cardsparks-local-development-key-change-before-production-2026"
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "[::1]"])
+
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+])
 
 
 # Application definition

@@ -23,7 +23,7 @@ class Deck(models.Model):
         ordering = ["-created_at", "-id"]
 
     def __str__(self):
-        return f'{self.title} ({self.owner.username if self.owner else "Unknown"})'
+        return f'{self.title} ({self.owner.email if self.owner else "Unknown"})'
 
 class Card(models.Model):
     deck = models.ForeignKey(Deck, on_delete=models.CASCADE, related_name="cards")
@@ -54,10 +54,13 @@ class Card(models.Model):
 class Review(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="reviews")
     reviewed_at = models.DateTimeField(auto_now_add=True, db_index=True)
-    grade = models.PositiveIntegerField()
+    grade = models.PositiveIntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
     easiness_after = models.FloatField()
     repetitions_after = models.PositiveIntegerField()
     interval_days_after = models.PositiveIntegerField()
 
     class Meta:
         ordering = ['-reviewed_at', '-id']
+        constraints = [
+            models.CheckConstraint(condition=models.Q(grade__gte=0) & models.Q(grade__lte=5), name="review_grade_between_0_and_5")
+        ]

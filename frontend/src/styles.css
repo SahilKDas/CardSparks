@@ -381,8 +381,9 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
   .brand { font-size: 18px; }.brand-mark { width: 33px; height: 33px; }
   .desktop-nav, .demo-badge { display: none; }
   .mobile-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; height: 66px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; background: color-mix(in srgb, var(--surface) 93%, transparent); border-top: 1px solid var(--border); backdrop-filter: blur(18px); }
-  .mobile-nav a { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--subtle); font-size: 8px; font-weight: 600; }
-  .mobile-nav a.active { color: var(--primary); }
+  .mobile-nav a, .mobile-nav button { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--subtle); font-size: 8px; font-weight: 600; }
+  .mobile-nav button { padding: 0; background: transparent; border: 0; cursor: pointer; }
+  .mobile-nav a.active, .mobile-nav button.active { color: var(--primary); }
   .mobile-create { width: 36px; height: 36px; margin-top: -21px; display: grid; place-items: center; color: white; background: var(--primary); border: 4px solid var(--surface); border-radius: 12px; box-sizing: content-box; box-shadow: 0 5px 15px rgba(242,107,77,.25); }
   .mobile-avatar { width: 24px; height: 24px; display: grid; place-items: center; color: #604d42; background: #e7d8cd; border-radius: 50%; font-size: 8px; font-weight: 700; }
   main { padding-bottom: 66px; }

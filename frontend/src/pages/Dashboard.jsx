@@ -1,16 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DeckCard from '../components/DeckCard'
 import { EmptyState, ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 
 export default function Dashboard() {
   const { decks, loading, error, setError, refreshDecks, user } = useApp()
   const [search, setSearch] = useState('')
-  const filteredDecks = useMemo(() => decks.filter((deck) => deck.title.toLowerCase().includes(search.toLowerCase())), [decks, search])
+  const searchInput = useRef(null)
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  const filteredDecks = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase()
+    return decks.filter((deck) => deck.title.toLocaleLowerCase().includes(query))
+  }, [decks, search])
   const totalCards = decks.reduce((sum, deck) => sum + (deck.cards?.length || 0), 0)
   const masteredCards = decks.reduce((sum, deck) => sum + (deck.cards?.filter((card) => (card.mastery || 0) >= 0.8).length || 0), 0)
+
+  useEffect(() => {
+    const focusSearch = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchInput.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', focusSearch)
+    return () => window.removeEventListener('keydown', focusSearch)
+  }, [])
 
   return (
     <div className="page dashboard-page">
@@ -34,7 +50,7 @@ export default function Dashboard() {
       <section className="deck-section">
         <div className="section-heading">
           <div><h2>Your decks</h2><span>{decks.length} total</span></div>
-          <label className="search-field"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search decks" /><span className="shortcut">⌘ K</span></label>
+          <label className="search-field"><Icon name="search" size={18} /><input ref={searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search decks" aria-label="Search decks" /><span className="shortcut">{isMac ? '⌘ K' : 'Ctrl K'}</span></label>
         </div>
 
         {loading ? <Spinner /> : filteredDecks.length ? (

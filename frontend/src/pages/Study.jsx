@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import {
   GRADES,
   PASS_THRESHOLD,
@@ -37,6 +37,7 @@ export default function Study() {
   const [complete, setComplete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const submitStarted = useRef(false)
 
   const card = queue[index]
 
@@ -53,6 +54,8 @@ export default function Study() {
         setFlipped(false)
         setResults([])
         setComplete(false)
+        setSaveError('')
+        submitStarted.current = false
         setQueueStatus('ready')
       })
       .catch((error) => {
@@ -67,6 +70,8 @@ export default function Study() {
   }, [deckId, session, getStudyQueue])
 
   const submit = useCallback(async (finalResults) => {
+    if (submitStarted.current) return
+    submitStarted.current = true
     setSaving(true)
     setComplete(true)
     setSaveError('')
@@ -78,13 +83,14 @@ export default function Study() {
       )
     } catch (error) {
       setSaveError(error.message)
+      submitStarted.current = false
     } finally {
       setSaving(false)
     }
   }, [deckId, recordStudy])
 
   const rate = useCallback((grade) => {
-    if (!card) return
+    if (!card || submitStarted.current) return
 
     const previous = results.find((item) => item.cardId === card.id)
     const worstGrade = previous ? Math.min(previous.worstGrade, grade) : grade
@@ -101,21 +107,24 @@ export default function Study() {
     setResults(next)
     setFlipped(false)
 
-    // Missed it: send this card to the back of the session and keep going.
-    if (grade < PASS_THRESHOLD) {
-      setQueue((current) => [
-        ...current.slice(0, index),
-        ...current.slice(index + 1),
-        current[index],
-      ])
-      return
-    }
-
-    // Session flow depends on the latest answer, not the worst one.
     const answered = new Set(
       next.filter((item) => item.lastGrade >= PASS_THRESHOLD).map((item) => item.cardId),
     )
 
+    // Missed it: send this card to the back of the session and keep going.
+    if (grade < PASS_THRESHOLD) {
+      const reordered = [
+        ...queue.slice(0, index),
+        ...queue.slice(index + 1),
+        queue[index],
+      ]
+      const nextIndex = reordered.findIndex((item) => !answered.has(item.id))
+      setQueue(reordered)
+      setIndex(Math.max(0, nextIndex))
+      return
+    }
+
+    // Session flow depends on the latest answer, not the worst one.
     if (queue.every((item) => answered.has(item.id))) {
       submit(next)
     } else {
@@ -127,6 +136,8 @@ export default function Study() {
     if (complete || queueStatus !== 'ready' || !card) return undefined
 
     const handleKey = (event) => {
+      const target = event.target
+      if (event.repeat || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target instanceof HTMLButtonElement || target?.isContentEditable) return
       if (event.code === 'Space') {
         event.preventDefault()
         setFlipped((value) => !value)
@@ -154,7 +165,7 @@ export default function Study() {
         <span>🗂️</span>
         <h1>That deck is gone</h1>
         <p>It may have been deleted from another tab.</p>
-        <Link className="button button-primary" to="/">Back to decks</Link>
+        <Link className="button button-primary" to="/decks">Back to decks</Link>
       </div>
     )
   }
@@ -213,7 +224,7 @@ export default function Study() {
         <div className="study-complete-card">
           <span className="celebration-icon"><Icon name="trophy" size={36} /></span>
           <span className="eyebrow">Session complete</span>
-          <h1>Scheduled and saved.</h1>
+          <h1>{saving ? 'Saving your schedule…' : saveError ? 'Session finished.' : 'Scheduled and saved.'}</h1>
           <p>You worked through {total} {total === 1 ? 'card' : 'cards'} from <strong>{deck.title}</strong>.</p>
           <div className="score-ring" style={{ '--score': `${score * 3.6}deg` }}>
             <div><strong>{score}%</strong><span>first try</span></div>
@@ -226,10 +237,8 @@ export default function Study() {
           {saving && <p className="saving-note">Saving your progress…</p>}
           {saveError && <p className="save-error">Your ratings didn’t save: {saveError}</p>}
           <div className="complete-actions">
-            <button className="button button-secondary" type="button" onClick={() => setSession((value) => value + 1)}>
-              <Icon name="refresh" size={16} /> Study what’s left
-            </button>
-            <button className="button button-primary" type="button" onClick={() => navigate(`/decks/${deck.id}`)}>
+            {saveError ? <button className="button button-secondary" type="button" onClick={() => submit(results)}><Icon name="refresh" size={16} /> Retry saving</button> : <button className="button button-secondary" type="button" disabled={saving} onClick={() => setSession((value) => value + 1)}><Icon name="refresh" size={16} /> Study what’s left</button>}
+            <button className="button button-primary" type="button" disabled={saving} onClick={() => navigate(`/decks/${deck.id}`)}>
               Back to deck <Icon name="arrowRight" size={16} />
             </button>
           </div>
@@ -263,7 +272,7 @@ export default function Study() {
           {flipped
             ? ' How well did you recall it?'
             : isRepeat
-              ? ' You missed this one — it repeats tomorrow either way'
+              ? ' You missed this one — it will repeat until you recall it'
               : ' Tap the card to reveal the answer'}
         </p>
 

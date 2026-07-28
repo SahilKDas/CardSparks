@@ -4,7 +4,7 @@ import { ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
 import { relativeDate } from '../components/DeckCard'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 
 export default function DeckDetail() {
   const { deckId } = useParams()
@@ -20,10 +20,11 @@ export default function DeckDetail() {
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiCount, setAiCount] = useState(5)
   const [busy, setBusy] = useState(false)
+  const [deletingCardId, setDeletingCardId] = useState(null)
   const [localError, setLocalError] = useState('')
 
   if (loading) return <div className="page"><Spinner label="Opening your deck" /></div>
-  if (!deck) return <div className="page not-found"><span>🤔</span><h1>That deck isn’t here</h1><p>It may have been deleted or the link may be out of date.</p><Link className="button button-primary" to="/">Back to my decks</Link></div>
+  if (!deck) return <div className="page not-found"><span>🤔</span><h1>That deck isn’t here</h1><p>It may have been deleted or the link may be out of date.</p><Link className="button button-primary" to="/decks">Back to my decks</Link></div>
 
   const mastered = deck.cards.filter((card) => (card.mastery || 0) >= 0.8).length
 
@@ -34,8 +35,9 @@ export default function DeckDetail() {
     }
     setBusy(true)
     try {
-      if (editingCard) await updateCard(editingCard.id, draft)
-      else await addCard(deck.id, draft)
+      const cleanedDraft = { front: draft.front.trim(), back: draft.back.trim() }
+      if (editingCard) await updateCard(editingCard.id, cleanedDraft)
+      else await addCard(deck.id, cleanedDraft)
       setEditingCard(null)
       setAddOpen(false)
       setDraft({ front: '', back: '' })
@@ -83,6 +85,19 @@ export default function DeckDetail() {
     }
   }
 
+  async function handleDeleteCard(cardId) {
+    if (!window.confirm('Delete this card?')) return
+    setDeletingCardId(cardId)
+    setLocalError('')
+    try {
+      await deleteCard(cardId)
+    } catch (requestError) {
+      setLocalError(requestError.message)
+    } finally {
+      setDeletingCardId(null)
+    }
+  }
+
   return (
     <div className="page detail-page">
       <div className="page-breadcrumb"><Link to="/decks"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
@@ -97,8 +112,8 @@ export default function DeckDetail() {
           <div className="detail-meta"><span><Icon name="cards" size={16} /> {deck.cards.length} cards</span><span><Icon name="clock" size={16} /> {relativeDate(deck.lastStudied)}</span><span><Icon name="trophy" size={16} /> {mastered} mastered</span></div>
         </div>
         <div className="detail-actions">
-          <Link className={`button button-primary ${!deck.cards.length ? 'disabled' : ''}`} to={deck.cards.length ? `/decks/${deck.id}/study` : '#'}><Icon name="play" size={17} /> Study deck</Link>
-          <button className="button button-secondary" type="button" onClick={() => { setDetails({ title: deck.title, description: deck.description || '' }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
+          {deck.cards.length ? <Link className="button button-primary" to={`/decks/${deck.id}/study`}><Icon name="play" size={17} /> Study deck</Link> : <button className="button button-primary" type="button" disabled><Icon name="play" size={17} /> Add cards to study</button>}
+          <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setDetails({ title: deck.title, description: deck.description || '' }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
           <button className="icon-button destructive-hover" type="button" onClick={handleDeleteDeck} aria-label="Delete deck"><Icon name="trash" size={18} /></button>
         </div>
       </header>
@@ -106,7 +121,7 @@ export default function DeckDetail() {
       <section className="cards-list-section">
         <div className="section-heading detail-list-heading">
           <div><h2>Cards</h2><span>{deck.cards.length} in this deck</span></div>
-          <div className="list-actions"><button className="button button-secondary" type="button" onClick={() => setAiOpen(true)}><Icon name="wand" size={16} /> Generate more</button><button className="button button-primary" type="button" onClick={() => { setDraft({ front: '', back: '' }); setAddOpen(true) }}><Icon name="plus" size={17} /> Add card</button></div>
+          <div className="list-actions"><button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setAiOpen(true) }}><Icon name="wand" size={16} /> Generate more</button><button className="button button-primary" type="button" onClick={() => { setLocalError(''); setDraft({ front: '', back: '' }); setAddOpen(true) }}><Icon name="plus" size={17} /> Add card</button></div>
         </div>
 
         {deck.cards.length ? <div className="detail-card-list">{deck.cards.map((card, index) => (
@@ -116,24 +131,24 @@ export default function DeckDetail() {
             <span className="row-arrow"><Icon name="arrowRight" size={18} /></span>
             <div><small>Back</small><p>{card.back}</p></div>
             <div className="row-mastery" title={`${Math.round((card.mastery || 0) * 100)}% mastery`}><span style={{ '--mastery': `${Math.round((card.mastery || 0) * 100)}%` }} /></div>
-            <div className="row-actions"><button type="button" onClick={() => { setEditingCard(card); setDraft({ front: card.front, back: card.back }); }} aria-label={`Edit card ${index + 1}`}><Icon name="edit" size={16} /></button><button type="button" onClick={() => window.confirm('Delete this card?') && deleteCard(card.id).catch((requestError) => setLocalError(requestError.message))} aria-label={`Delete card ${index + 1}`}><Icon name="trash" size={16} /></button></div>
+            <div className="row-actions"><button type="button" onClick={() => { setLocalError(''); setEditingCard(card); setDraft({ front: card.front, back: card.back }); }} aria-label={`Edit card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="edit" size={16} /></button><button type="button" onClick={() => handleDeleteCard(card.id)} aria-label={`Delete card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="trash" size={16} /></button></div>
           </article>
         ))}</div> : <div className="inline-empty"><span><Icon name="cards" size={28} /></span><div><h3>This deck is waiting for its first card</h3><p>Add one yourself or ask AI to make a starter set.</p></div></div>}
       </section>
 
       {(addOpen || editingCard) && <Modal title={editingCard ? 'Edit card' : 'Add a new card'} onClose={() => { setAddOpen(false); setEditingCard(null); setLocalError('') }}>
-        <div className="modal-body form-stack"><label className="field-label">Front<textarea rows="4" value={draft.front} onChange={(event) => setDraft({ ...draft, front: event.target.value })} placeholder="Question or prompt" autoFocus /></label><label className="field-label">Back<textarea rows="4" value={draft.back} onChange={(event) => setDraft({ ...draft, back: event.target.value })} placeholder="Answer or explanation" /></label>{localError && <p className="field-error">{localError}</p>}</div>
-        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setAddOpen(false); setEditingCard(null) }}>Cancel</button><button className="button button-primary" type="button" onClick={saveCard} disabled={busy}>{busy ? 'Saving…' : 'Save card'}</button></div>
+        <div className="modal-body form-stack"><label className="field-label">Front<textarea rows="4" value={draft.front} onChange={(event) => setDraft({ ...draft, front: event.target.value })} placeholder="Question or prompt" autoFocus data-autofocus /></label><label className="field-label">Back<textarea rows="4" value={draft.back} onChange={(event) => setDraft({ ...draft, back: event.target.value })} placeholder="Answer or explanation" /></label>{localError && <p className="field-error">{localError}</p>}</div>
+        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setAddOpen(false); setEditingCard(null); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={saveCard} disabled={busy}>{busy ? 'Saving…' : 'Save card'}</button></div>
       </Modal>}
 
       {aiOpen && <Modal title="Generate more cards" onClose={() => { setAiOpen(false); setLocalError('') }}>
-        <div className="modal-body form-stack"><div className="modal-callout"><Icon name="sparkles" /><p>New AI cards will be added directly to <strong>{deck.title}</strong>.</p></div><label className="field-label">Topic or instructions<textarea rows="4" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="e.g. Focus on key dates and cause-and-effect relationships" autoFocus /></label><label className="field-label compact">Number of cards<select value={aiCount} onChange={(event) => setAiCount(Number(event.target.value))}><option value="3">3 cards</option><option value="5">5 cards</option><option value="8">8 cards</option><option value="10">10 cards</option></select></label>{localError && <p className="field-error">{localError}</p>}</div>
-        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => setAiOpen(false)}>Cancel</button><button className="button button-primary" type="button" onClick={addWithAi} disabled={busy}>{busy ? <><span className="button-spinner" /> Generating…</> : <><Icon name="sparkles" size={17} /> Generate cards</>}</button></div>
+        <div className="modal-body form-stack"><div className="modal-callout"><Icon name="sparkles" /><p>New AI cards will be added directly to <strong>{deck.title}</strong>.</p></div><label className="field-label">Topic or instructions<textarea rows="4" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="e.g. Focus on key dates and cause-and-effect relationships" autoFocus data-autofocus /></label><label className="field-label compact">Number of cards<select value={aiCount} onChange={(event) => setAiCount(Number(event.target.value))}><option value="3">3 cards</option><option value="5">5 cards</option><option value="8">8 cards</option><option value="10">10 cards</option></select></label>{localError && <p className="field-error">{localError}</p>}</div>
+        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setAiOpen(false); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={addWithAi} disabled={busy}>{busy ? <><span className="button-spinner" /> Generating…</> : <><Icon name="sparkles" size={17} /> Generate cards</>}</button></div>
       </Modal>}
 
-      {editingDetails && <Modal title="Edit deck details" onClose={() => setEditingDetails(false)}>
-        <div className="modal-body form-stack"><label className="field-label">Deck name<input value={details.title} onChange={(event) => setDetails({ ...details, title: event.target.value })} autoFocus /></label><label className="field-label">Description<textarea rows="3" value={details.description} onChange={(event) => setDetails({ ...details, description: event.target.value })} /></label>{localError && <p className="field-error">{localError}</p>}</div>
-        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => setEditingDetails(false)}>Cancel</button><button className="button button-primary" type="button" onClick={saveDetails} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button></div>
+      {editingDetails && <Modal title="Edit deck details" onClose={() => { setEditingDetails(false); setLocalError('') }}>
+        <div className="modal-body form-stack"><label className="field-label">Deck name<input value={details.title} onChange={(event) => setDetails({ ...details, title: event.target.value })} maxLength="256" autoFocus data-autofocus /></label><label className="field-label">Description<textarea rows="3" value={details.description} onChange={(event) => setDetails({ ...details, description: event.target.value })} /></label>{localError && <p className="field-error">{localError}</p>}</div>
+        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setEditingDetails(false); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={saveDetails} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button></div>
       </Modal>}
     </div>
   )
