@@ -1,19 +1,37 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { api, USE_MOCK_API } from '../services/api'
+import { api, TOKEN_KEY, USE_MOCK_API } from '../services/api'
 
 const AppContext = createContext(null)
+const USER_KEY = 'cardsparks.user'
+
+function readStoredUser() {
+  const saved = localStorage.getItem(USER_KEY)
+  if (!saved) return null
+  try {
+    return JSON.parse(saved)
+  } catch {
+    localStorage.removeItem(USER_KEY)
+    return null
+  }
+}
 
 export function AppProvider({ children }) {
+  const storedUser = readStoredUser()
+  const hasStoredSession = Boolean(localStorage.getItem(TOKEN_KEY) && storedUser && !storedUser.guest)
   const [decks, setDecks] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(hasStoredSession)
   const [error, setError] = useState('')
   const [theme, setTheme] = useState(() => localStorage.getItem('cardsparks.theme') || 'light')
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('cardsparks.user')
-    return saved ? JSON.parse(saved) : { name: 'Guest learner', email: 'guest@cardsparks.local', guest: true }
-  })
+  const [user, setUser] = useState(storedUser)
+  const [isAuthenticated, setIsAuthenticated] = useState(hasStoredSession)
 
   const refreshDecks = useCallback(async () => {
+    if (!isAuthenticated) {
+      setDecks([])
+      setLoading(false)
+      setError('')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -23,7 +41,7 @@ export function AppProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     refreshDecks()
@@ -68,25 +86,24 @@ export function AppProvider({ children }) {
     theme,
     toggleTheme: () => setTheme((current) => current === 'light' ? 'dark' : 'light'),
     user,
+    isAuthenticated,
     authenticate: async (mode, credentials) => {
       const payload = await api.authenticate(mode, credentials)
       const nextUser = payload.user || { name: credentials.name || credentials.email.split('@')[0], email: credentials.email }
       setUser(nextUser)
-      localStorage.setItem('cardsparks.user', JSON.stringify(nextUser))
+      setIsAuthenticated(true)
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
       return payload
     },
-    continueAsGuest: () => {
-      const guest = { name: 'Guest learner', email: 'guest@cardsparks.local', guest: true }
-      setUser(guest)
-      localStorage.setItem('cardsparks.user', JSON.stringify(guest))
-    },
     logout: () => {
-      localStorage.removeItem('cardsparks.auth.token')
-      localStorage.removeItem('cardsparks.user')
-      setUser({ name: 'Guest learner', email: 'guest@cardsparks.local', guest: true })
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+      setDecks([])
+      setUser(null)
+      setIsAuthenticated(false)
     },
     isMockMode: USE_MOCK_API,
-  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user])
+  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user, isAuthenticated])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

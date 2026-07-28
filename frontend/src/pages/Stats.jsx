@@ -173,7 +173,7 @@ export default function Stats() {
           <span className="empty-illustration"><Icon name="cards" size={34} /></span>
           <h2>No reviews yet</h2>
           <p>Study a deck and your history starts building here.</p>
-          <Link className="button button-primary" to="/">Pick a deck</Link>
+          <Link className="button button-primary" to="/decks">Pick a deck</Link>
         </div>
       </div>
     )
