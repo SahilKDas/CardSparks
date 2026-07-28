@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import DeckDetail from './pages/DeckDetail'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
+import Stats from './pages/Stats'
 import Study from './pages/Study'
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="stats" element={<Stats />} />
         <Route path="decks/new" element={<CreateDeck />} />
         <Route path="decks/:deckId" element={<DeckDetail />} />
         <Route path="decks/:deckId/study" element={<Study />} />
@@ -23,4 +25,3 @@ export default function App() {
     </Routes>
   )
 }
-

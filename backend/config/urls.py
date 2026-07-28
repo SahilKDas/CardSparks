@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from decks.views import DeckViewSet, CardViewSet
+from decks.views import DeckViewSet, CardViewSet, StatsView
 
 router = DefaultRouter()
 router.register(r"decks", DeckViewSet, basename="deck")
@@ -26,5 +26,6 @@ router.register(r"cards", CardViewSet, basename="cards")
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/auth/", include("accounts.urls")),
+    path("api/stats/", StatsView.as_view(), name="stats"),
     path("api/", include(router.urls))
 ]

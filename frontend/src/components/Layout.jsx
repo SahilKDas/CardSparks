@@ -25,6 +25,7 @@ export default function Layout() {
           <Logo />
           <nav className="desktop-nav" aria-label="Primary navigation">
             <NavLink to="/" end><Icon name="grid" size={17} /> My decks</NavLink>
+            <NavLink to="/stats"><Icon name="clock" size={17} /> Progress</NavLink>
             <NavLink to="/decks/new"><Icon name="plus" size={17} /> Create</NavLink>
           </nav>
           <div className="topbar-actions">
@@ -54,10 +55,10 @@ export default function Layout() {
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavLink to="/" end><Icon name="grid" size={20} /><span>Decks</span></NavLink>
+        <NavLink to="/stats"><Icon name="clock" size={20} /><span>Progress</span></NavLink>
         <NavLink to="/decks/new"><span className="mobile-create"><Icon name="plus" size={22} /></span><span>Create</span></NavLink>
         <NavLink to="/login"><span className="mobile-avatar">{initials}</span><span>Profile</span></NavLink>
       </nav>
     </div>
   )
 }
-

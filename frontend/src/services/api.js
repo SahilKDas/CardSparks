@@ -71,7 +71,7 @@ function normalizeDeck(deck) {
   }
 }
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8500)
   const token = localStorage.getItem(TOKEN_KEY)

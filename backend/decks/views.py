@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.db.models import Max
 from rest_framework import viewsets, status, mixins
-from rest_framework.decorators import action
+from rest_framework.decorators import APIView, action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
@@ -11,6 +11,7 @@ from .scheduling import apply_review
 from .models import Deck, Card, Review
 from .serializers import DeckSerializer, CardSerializer, StudyResultSerializer, StudySessionSerializer
 from .generation import GenerationError, generate_cards
+from .stats import build_stats
 
 MASTERY_ON_PASS = 0.20
 MASTERY_ON_FAIL = -0.12 
@@ -146,3 +147,17 @@ class CardViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.Ge
         deck = instance.deck
         instance.delete()
         deck.save(update_fields=["updated_at"])
+
+class StatsView(APIView):
+    def get(self, request):
+        def bounded(name, default, ceiling):
+            try:
+                return max(1, min(int(request.query_params.get(name, default)), ceiling))
+            except (TypeError, ValueError):
+                return default
+
+        return Response(build_stats(
+            request.user,
+            history_days=bounded("days", 365, 365),
+            horizon_days=bounded("horizon", 30, 90)
+        ))
