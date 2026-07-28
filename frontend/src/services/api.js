@@ -1,4 +1,15 @@
 import { demoDecks } from '../data/demoData'
+import {
+  DAY_MS,
+  DEFAULT_EASINESS,
+  PASS_THRESHOLD,
+  byDueDate,
+  deriveMastery,
+  dueCount,
+  isDue,
+  scheduleOf,
+  sm2,
+} from '../lib/sm2'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -27,8 +38,26 @@ function writeDecks(decks) {
   return decks
 }
 
+export function normalizeCard(card) {
+  return {
+    ...card,
+    id: String(card.id),
+    front: card.front || card.question || '',
+    back: card.back || card.answer || '',
+    mastery: Number(card.mastery ?? 0),
+    position: Number(card.position ?? 0),
+    easiness: Number(card.easiness ?? DEFAULT_EASINESS),
+    repetitions: Number(card.repetitions ?? 0),
+    intervalDays: Number(card.intervalDays ?? card.interval_days ?? 0),
+    lapses: Number(card.lapses ?? 0),
+    dueAt: card.dueAt || card.due_at || null,
+    lastReviewedAt: card.lastReviewedAt || card.last_reviewed_at || null,
+  }
+}
+
 function normalizeDeck(deck) {
-  const cards = deck.cards || deck.flashcards || []
+  const cards = (deck.cards || deck.flashcards || []).map(normalizeCard)
+  const reportedDue = deck.dueCount ?? deck.due_count
   return {
     ...deck,
     id: String(deck.id),
@@ -37,19 +66,14 @@ function normalizeDeck(deck) {
     lastStudied: deck.lastStudied || deck.last_studied || null,
     createdAt: deck.createdAt || deck.created_at,
     updatedAt: deck.updatedAt || deck.updated_at,
-    cards: cards.map((card) => ({
-      ...card,
-      id: String(card.id),
-      front: card.front || card.question || '',
-      back: card.back || card.answer || '',
-      mastery: Number(card.mastery ?? 0),
-    })),
+    cards,
+    dueCount: typeof reportedDue === 'number' ? reportedDue : dueCount(cards),
   }
 }
 
 async function request(path, options = {}) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 8000)
+  const timer = setTimeout(() => controller.abort(), 8500)
   const token = localStorage.getItem(TOKEN_KEY)
 
   try {
@@ -99,7 +123,7 @@ async function mockGenerate(topic, number) {
   const count = Math.max(1, Math.min(Number(number) || 8, 20))
   return Array.from({ length: count }, (_, index) => {
     const [front, back] = promptTemplates[index % promptTemplates.length](topic)
-    return { id: uid('generated'), front, back, mastery: 0 }
+    return normalizeCard({ id: uid('generated'), front, back, mastery: 0 })
   })
 }
 
@@ -123,7 +147,7 @@ const mockApi = {
       createdAt: now,
       updatedAt: now,
       lastStudied: null,
-      cards: (input.cards || []).map((card) => ({ ...card, id: uid('card'), mastery: card.mastery || 0 })),
+      cards: (input.cards || []).map((card, index) => normalizeCard({ ...card, id: uid('card'), position: index })),
     })
     writeDecks([deck, ...readDecks()])
     return deck
@@ -146,7 +170,8 @@ const mockApi = {
   },
   async addCard(deckId, card) {
     const deck = await this.getDeck(deckId)
-    const nextCard = { ...card, id: uid('card'), mastery: 0 }
+    const position = deck.cards.reduce((max, item) => Math.max(max, item.position ?? 0), -1) + 1
+    const nextCard = normalizeCard({ ...card, id: uid('card'), position })
     const updated = await this.updateDeck(deckId, { cards: [...deck.cards, nextCard] })
     return { deck: updated, card: nextCard }
   },
@@ -188,17 +213,43 @@ const mockApi = {
   async generateIntoDeck(deckId, topic, number) {
     const cards = await mockGenerate(topic, number)
     const deck = await this.getDeck(deckId)
-    return this.updateDeck(deckId, { cards: [...deck.cards, ...cards.map((card) => ({ ...card, id: uid('card') }))] })
+    const start = deck.cards.reduce((max, item) => Math.max(max, item.position ?? 0), -1) + 1
+    return this.updateDeck(deckId, {
+      cards: [
+        ...deck.cards,
+        ...cards.map((card, index) => normalizeCard({ ...card, id: uid('card'), position: start + index })),
+      ],
+    })
+  },
+  async getStudyQueue(deckId, limit = 100) {
+    await wait(200)
+    const deck = await this.getDeck(deckId)
+    const now = Date.now()
+    return deck.cards.filter((card) => isDue(card, now)).sort(byDueDate).slice(0, limit)
   },
   async recordStudy(deckId, results) {
     const deck = await this.getDeck(deckId)
-    const ratingMap = new Map(results.map((result) => [String(result.cardId), result.correct]))
+    const grades = new Map(results.map((result) => [String(result.cardId), result.grade]))
+    const now = new Date()
+
     const cards = deck.cards.map((card) => {
-      if (!ratingMap.has(String(card.id))) return card
-      const adjustment = ratingMap.get(String(card.id)) ? 0.2 : -0.12
-      return { ...card, mastery: Math.max(0, Math.min(1, (card.mastery || 0) + adjustment)) }
+      if (!grades.has(String(card.id))) return card
+      const grade = grades.get(String(card.id))
+      const next = sm2(scheduleOf(card), grade)
+      const lapsed = grade < PASS_THRESHOLD && card.repetitions > 0
+      return {
+        ...card,
+        easiness: next.easiness,
+        repetitions: next.repetitions,
+        intervalDays: next.intervalDays,
+        lapses: card.lapses + (lapsed ? 1 : 0),
+        dueAt: new Date(now.getTime() + next.intervalDays * DAY_MS).toISOString(),
+        lastReviewedAt: now.toISOString(),
+        mastery: deriveMastery(next),
+      }
     })
-    return this.updateDeck(deckId, { cards, lastStudied: new Date().toISOString() })
+
+    return this.updateDeck(deckId, { cards, lastStudied: now.toISOString() })
   },
   async authenticate(mode, credentials) {
     await wait(500)
@@ -229,11 +280,11 @@ const realApi = {
   },
   async addCard(deckId, card) {
     const addedCard = await request(`/api/decks/${deckId}/cards/`, { method: 'POST', body: JSON.stringify(card) })
-    return { deck: await this.getDeck(deckId), card: addedCard }
+    return { deck: await this.getDeck(deckId), card: normalizeCard(addedCard) }
   },
   async updateCard(cardId, updates) {
     const card = await request(`/api/cards/${cardId}/`, { method: 'PATCH', body: JSON.stringify(updates) })
-    return { card }
+    return { card: normalizeCard(card) }
   },
   async deleteCard(cardId) {
     return request(`/api/cards/${cardId}/`, { method: 'DELETE' })
@@ -243,13 +294,8 @@ const realApi = {
       method: 'POST',
       body: JSON.stringify({ topic, num_cards: number, preview: true }),
     })
-    return (payload.cards || payload.flashcards || []).map((card) => ({
-      ...card,
-      id: String(card.id || uid('preview')),
-      front: card.front || card.question || '',
-      back: card.back || card.answer || '',
-      mastery: 0,
-    }))
+    return (payload.cards || payload.flashcards || []).map((card) =>
+      normalizeCard({ ...card, id: card.id || uid('preview') }))
   },
   async generateIntoDeck(deckId, topic, number) {
     const payload = await request(`/api/decks/${deckId}/generate/`, {
@@ -258,17 +304,17 @@ const realApi = {
     })
     return normalizeDeck(payload.deck || payload)
   },
+  async getStudyQueue(deckId, limit = 20) {
+    const payload = await request(`/api/decks/${deckId}/study-queue/?limit=${limit}`)
+    const cards = payload.cards || payload.flashcards || (Array.isArray(payload) ? payload : [])
+    return cards.map(normalizeCard)
+  },
   async recordStudy(deckId, results) {
-    try {
-      const payload = await request(`/api/decks/${deckId}/study-sessions/`, {
-        method: 'POST',
-        body: JSON.stringify({ results }),
-      })
-      return normalizeDeck(payload.deck || payload)
-    } catch (error) {
-      if (error.message.includes('404') || error.message.includes('405')) return this.getDeck(deckId)
-      throw error
-    }
+    const payload = await request(`/api/decks/${deckId}/study-sessions/`, {
+      method: 'POST',
+      body: JSON.stringify({ results }),
+    })
+    return normalizeDeck(payload.deck || payload)
   },
   async authenticate(mode, credentials) {
     const payload = await request(`/api/auth/${mode === 'signup' ? 'signup' : 'login'}/`, {
@@ -282,4 +328,3 @@ const realApi = {
 }
 
 export const api = USE_MOCK_API ? mockApi : realApi
-

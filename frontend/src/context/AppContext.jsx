@@ -47,6 +47,8 @@ export function AppProvider({ children }) {
     }
   }, [])
 
+  const getStudyQueue = useCallback((deckId, limit) => api.getStudyQueue(deckId, limit), [])
+
   const value = useMemo(() => ({
     decks,
     loading,
@@ -61,6 +63,7 @@ export function AppProvider({ children }) {
     deleteCard: (cardId) => runMutation(() => api.deleteCard(cardId)),
     generateCards: (topic, number) => api.generateCards(topic, number),
     generateIntoDeck: (deckId, topic, number) => runMutation(() => api.generateIntoDeck(deckId, topic, number)),
+    getStudyQueue,
     recordStudy: (deckId, results) => runMutation(() => api.recordStudy(deckId, results)),
     theme,
     toggleTheme: () => setTheme((current) => current === 'light' ? 'dark' : 'light'),
@@ -83,7 +86,7 @@ export function AppProvider({ children }) {
       setUser({ name: 'Guest learner', email: 'guest@cardsparks.local', guest: true })
     },
     isMockMode: USE_MOCK_API,
-  }), [decks, loading, error, refreshDecks, runMutation, theme, user])
+  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
@@ -93,4 +96,3 @@ export function useApp() {
   if (!context) throw new Error('useApp must be used inside AppProvider')
   return context
 }
-
