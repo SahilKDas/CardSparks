@@ -4,45 +4,85 @@ import CardEditor, { blankCard } from '../components/CardEditor'
 import { ErrorBanner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
 import { useApp } from '../context/useApp'
+import {
+  MAX_NOTES_LENGTH,
+  deriveNotesTitle,
+  validateStudyNotes,
+} from '../lib/studyFeatures'
 
 const colorOptions = ['coral', 'violet', 'blue', 'green', 'yellow']
 
+function newDraft(cards = []) {
+  return { title: '', description: '', cards, color: 'coral', emoji: '✨' }
+}
+
 export default function CreateDeck() {
-  const { createDeck, generateCards } = useApp()
+  const { createDeck, generateCards, generateCardsFromNotes } = useApp()
   const navigate = useNavigate()
   const [mode, setMode] = useState('ai')
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
+  const [drafts, setDrafts] = useState(() => ({
+    ai: newDraft(),
+    notes: newDraft(),
+    manual: newDraft([blankCard(), blankCard()]),
+  }))
   const [topic, setTopic] = useState('')
-  const [numCards, setNumCards] = useState(8)
-  const [cards, setCards] = useState([])
-  const [color, setColor] = useState('coral')
-  const [emoji, setEmoji] = useState('✨')
+  const [notes, setNotes] = useState('')
+  const [generationCounts, setGenerationCounts] = useState({ ai: 8, notes: 8 })
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState('')
 
-  const completeCards = useMemo(() => cards.filter((card) => card.front.trim() && card.back.trim()), [cards])
+  const draft = drafts[mode]
+  const completeCards = useMemo(
+    () => draft.cards.filter((card) => card.front.trim() && card.back.trim()),
+    [draft.cards],
+  )
+
+  function updateDraft(targetMode, update) {
+    setDrafts((current) => ({
+      ...current,
+      [targetMode]: typeof update === 'function' ? update(current[targetMode]) : { ...current[targetMode], ...update },
+    }))
+  }
 
   function switchMode(nextMode) {
     setMode(nextMode)
     setLocalError('')
-    if (nextMode === 'manual' && cards.length === 0) setCards([blankCard(), blankCard()])
   }
 
   async function handleGenerate() {
-    if (!topic.trim()) {
+    const generationMode = mode
+    const count = generationCounts[generationMode]
+    let generated
+
+    if (generationMode === 'ai' && !topic.trim()) {
       setLocalError('Give CardSparks a topic or study prompt first.')
       return
     }
+    if (generationMode === 'notes') {
+      const notesError = validateStudyNotes(notes)
+      if (notesError) {
+        setLocalError(notesError)
+        return
+      }
+    }
+
     setGenerating(true)
     setLocalError('')
     try {
-      const generated = await generateCards(topic.trim(), numCards)
-      if (!generated.length) throw new Error('The generator returned no cards. Try a more specific topic.')
-      setCards(generated)
-      if (!title) setTitle(topic.trim())
-      if (!description) setDescription(`A focused review of ${topic.trim()}, generated with CardSparks AI.`)
+      generated = generationMode === 'notes'
+        ? await generateCardsFromNotes(notes.trim(), count)
+        : await generateCards(topic.trim(), count)
+      if (!generated.length) throw new Error('The generator returned no cards. Try adding more detail.')
+
+      updateDraft(generationMode, (current) => ({
+        ...current,
+        cards: generated,
+        title: current.title || (generationMode === 'notes' ? deriveNotesTitle(notes) : topic.trim()),
+        description: current.description || (generationMode === 'notes'
+          ? 'An editable review deck generated from pasted study notes.'
+          : `A focused review of ${topic.trim()}, generated with CardSparks AI.`),
+      }))
     } catch (error) {
       setLocalError(error.message)
     } finally {
@@ -51,15 +91,26 @@ export default function CreateDeck() {
   }
 
   function updateCard(index, card) {
-    setCards((current) => current.map((item, itemIndex) => itemIndex === index ? card : item))
+    updateDraft(mode, (current) => ({
+      ...current,
+      cards: current.cards.map((item, itemIndex) => itemIndex === index ? card : item),
+    }))
   }
 
   function deleteCard(index) {
-    setCards((current) => current.filter((_, itemIndex) => itemIndex !== index))
+    updateDraft(mode, (current) => ({
+      ...current,
+      cards: current.cards.filter((_, itemIndex) => itemIndex !== index),
+    }))
+  }
+
+  function resetGeneratedDraft() {
+    updateDraft(mode, (current) => ({ ...current, title: '', description: '', cards: [] }))
+    setLocalError('')
   }
 
   async function handleSave() {
-    if (!title.trim()) {
+    if (!draft.title.trim()) {
       setLocalError('Add a name for your deck.')
       return
     }
@@ -75,7 +126,13 @@ export default function CreateDeck() {
         front: card.front.trim(),
         back: card.back.trim(),
       }))
-      const deck = await createDeck({ title: title.trim(), description: description.trim(), emoji, color, cards: cleanedCards })
+      const deck = await createDeck({
+        title: draft.title.trim(),
+        description: draft.description.trim(),
+        emoji: draft.emoji,
+        color: draft.color,
+        cards: cleanedCards,
+      })
       navigate(`/decks/${deck.id}`)
     } catch (error) {
       setLocalError(error.message)
@@ -84,57 +141,84 @@ export default function CreateDeck() {
     }
   }
 
+  const generatedMode = mode === 'ai' || mode === 'notes'
+  const showingGenerator = generatedMode && draft.cards.length === 0
+  const switchingDisabled = generating || saving
+
   return (
     <div className="page create-page">
       <div className="page-breadcrumb"><Link to="/decks"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
       <header className="create-header">
         <span className="eyebrow"><Icon name="sparkles" size={14} /> Make something memorable</span>
         <h1>Create a new deck</h1>
-        <p>Bring your own cards, or turn a topic into a study-ready first draft.</p>
+        <p>Start with a topic, paste your study notes, or build every card yourself.</p>
       </header>
 
       <div className="mode-switch" role="tablist" aria-label="Creation method">
-        <button className={mode === 'ai' ? 'active' : ''} type="button" onClick={() => switchMode('ai')} role="tab" aria-selected={mode === 'ai'}><span><Icon name="wand" /></span><div><strong>Generate with AI</strong><small>From a topic or prompt</small></div>{mode === 'ai' && <Icon name="check" size={17} />}</button>
-        <button className={mode === 'manual' ? 'active' : ''} type="button" onClick={() => switchMode('manual')} role="tab" aria-selected={mode === 'manual'}><span><Icon name="manual" /></span><div><strong>Build it myself</strong><small>Add your own cards</small></div>{mode === 'manual' && <Icon name="check" size={17} />}</button>
+        <button id="mode-ai" className={mode === 'ai' ? 'active' : ''} type="button" onClick={() => switchMode('ai')} role="tab" aria-selected={mode === 'ai'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="wand" /></span><div><strong>Generate with AI</strong><small>From a topic or prompt</small></div>{mode === 'ai' && <Icon name="check" size={17} />}</button>
+        <button id="mode-notes" className={mode === 'notes' ? 'active' : ''} type="button" onClick={() => switchMode('notes')} role="tab" aria-selected={mode === 'notes'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="notes" /></span><div><strong>Paste study notes</strong><small>Ground cards in your material</small></div>{mode === 'notes' && <Icon name="check" size={17} />}</button>
+        <button id="mode-manual" className={mode === 'manual' ? 'active' : ''} type="button" onClick={() => switchMode('manual')} role="tab" aria-selected={mode === 'manual'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="manual" /></span><div><strong>Build it myself</strong><small>Add your own cards</small></div>{mode === 'manual' && <Icon name="check" size={17} />}</button>
       </div>
 
       <ErrorBanner message={localError} onDismiss={() => setLocalError('')} />
+      <p className="sr-only" role="status" aria-live="polite">{generating ? 'CardSparks is generating your card preview.' : ''}</p>
 
-      {mode === 'ai' && cards.length === 0 ? (
-        <section className="creation-panel ai-generator-panel">
-          <div className="panel-heading"><span className="big-panel-icon"><Icon name="wand" size={25} /></span><div><h2>What do you want to learn?</h2><p>Be specific for sharper, more useful cards.</p></div></div>
-          <label className="field-label">Topic or prompt<textarea value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={'Try “Photosynthesis for AP Biology” or “Spanish past-tense verbs with examples”'} rows="4" maxLength="1000" /></label>
-          <div className="generator-row">
-            <label className="field-label compact">Number of cards<select value={numCards} onChange={(event) => setNumCards(Number(event.target.value))}><option value="5">5 cards</option><option value="8">8 cards</option><option value="10">10 cards</option><option value="15">15 cards</option><option value="20">20 cards</option></select></label>
-            <button className="button button-primary generate-button" type="button" onClick={handleGenerate} disabled={generating}>{generating ? <><span className="button-spinner" /> Creating your cards…</> : <><Icon name="sparkles" size={18} /> Generate cards</>}</button>
+      <div id="creation-content" role="tabpanel" aria-labelledby={`mode-${mode}`}>
+        {showingGenerator && mode === 'ai' && (
+          <section className="creation-panel ai-generator-panel">
+            <div className="panel-heading"><span className="big-panel-icon"><Icon name="wand" size={25} /></span><div><h2>What do you want to learn?</h2><p>Be specific for sharper, more useful cards.</p></div></div>
+            <label className="field-label">Topic or prompt<textarea value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={'Try “Photosynthesis for AP Biology” or “Spanish past-tense verbs with examples”'} rows="4" maxLength="1000" /></label>
+            <GenerationControls mode={mode} count={generationCounts[mode]} setCounts={setGenerationCounts} generating={generating} onGenerate={handleGenerate} />
+            <div className="prompt-suggestions"><span>Need a spark?</span>{['The water cycle', 'JavaScript closures', 'Italian travel phrases'].map((item) => <button key={item} type="button" onClick={() => setTopic(item)}>{item}</button>)}</div>
+          </section>
+        )}
+
+        {showingGenerator && mode === 'notes' && (
+          <section className="creation-panel ai-generator-panel notes-generator-panel">
+            <div className="panel-heading"><span className="big-panel-icon"><Icon name="notes" size={25} /></span><div><h2>Paste the material you need to remember</h2><p>CardSparks will turn the ideas in your notes into an editable first draft.</p></div></div>
+            <label className="field-label" htmlFor="study-notes">
+              <span className="field-label-row"><strong>Study notes</strong><span className={notes.length > MAX_NOTES_LENGTH ? 'over-limit' : ''}>{notes.length.toLocaleString()} / {MAX_NOTES_LENGTH.toLocaleString()}</span></span>
+              <textarea id="study-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Paste lecture notes, a reading summary, or your study guide here…" rows="12" maxLength={MAX_NOTES_LENGTH} aria-describedby="study-notes-help" />
+            </label>
+            <p id="study-notes-help" className="notes-privacy"><Icon name="check" size={14} /> Your pasted source is used for this preview and is not saved with the deck.</p>
+            <GenerationControls mode={mode} count={generationCounts[mode]} setCounts={setGenerationCounts} generating={generating} onGenerate={handleGenerate} />
+          </section>
+        )}
+
+        {!showingGenerator && (
+          <div className="deck-builder">
+            <section className="creation-panel deck-details-panel">
+              <div className="panel-heading compact-heading"><div><h2>Deck details</h2><p>Give this collection a clear identity.</p></div></div>
+              <div className="deck-details-grid">
+                <label className="emoji-picker">Cover<input value={draft.emoji} onChange={(event) => updateDraft(mode, { emoji: Array.from(event.target.value).slice(0, 4).join('') })} maxLength="8" aria-label="Deck emoji" /></label>
+                <label className="field-label">Deck name<input value={draft.title} onChange={(event) => updateDraft(mode, { title: event.target.value })} placeholder="e.g. Cell Biology Essentials" maxLength="256" /></label>
+                <label className="field-label wide">Description <span>Optional</span><input value={draft.description} onChange={(event) => updateDraft(mode, { description: event.target.value })} placeholder="What will this deck help you remember?" /></label>
+                <div className="field-label color-field">Accent color<div className="color-options">{colorOptions.map((option) => <button key={option} type="button" className={`${option} ${draft.color === option ? 'selected' : ''}`} onClick={() => updateDraft(mode, { color: option })} aria-label={`Use ${option} accent`}><Icon name="check" size={13} /></button>)}</div></div>
+              </div>
+            </section>
+
+            <section className="cards-builder-section">
+              <div className="builder-heading"><div><h2>{generatedMode ? 'Review your cards' : 'Add your cards'}</h2><p>{mode === 'notes' ? 'Built from your notes. Edit anything before saving.' : mode === 'ai' ? 'AI made the first draft. You have the final word.' : 'Keep each card focused on one idea.'}</p></div><span>{completeCards.length} ready</span></div>
+              <div className="card-editor-list">
+                {draft.cards.map((card, index) => <CardEditor key={card.id} card={card} index={index} onChange={(next) => updateCard(index, next)} onDelete={() => deleteCard(index)} />)}
+              </div>
+              <button className="add-card-button" type="button" onClick={() => updateDraft(mode, (current) => ({ ...current, cards: [...current.cards, blankCard()] }))}><Icon name="plus" size={18} /> Add another card</button>
+              {generatedMode && <button className="text-button regenerate-link" type="button" onClick={resetGeneratedDraft}><Icon name="refresh" size={15} /> {mode === 'notes' ? 'Return to my pasted notes' : 'Start over with a different prompt'}</button>}
+            </section>
+
+            <div className="builder-footer"><Link className="button button-ghost" to="/decks">Cancel</Link><button className="button button-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? <><span className="button-spinner" /> Saving…</> : <><Icon name="save" size={17} /> Save deck</>}</button></div>
           </div>
-          <div className="prompt-suggestions"><span>Need a spark?</span>{['The water cycle', 'JavaScript closures', 'Italian travel phrases'].map((item) => <button key={item} type="button" onClick={() => setTopic(item)}>{item}</button>)}</div>
-        </section>
-      ) : (
-        <div className="deck-builder">
-          <section className="creation-panel deck-details-panel">
-            <div className="panel-heading compact-heading"><div><h2>Deck details</h2><p>Give this collection a clear identity.</p></div></div>
-            <div className="deck-details-grid">
-              <label className="emoji-picker">Cover<input value={emoji} onChange={(event) => setEmoji(Array.from(event.target.value).slice(0, 4).join(''))} maxLength="8" aria-label="Deck emoji" /></label>
-              <label className="field-label">Deck name<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Cell Biology Essentials" maxLength="256" /></label>
-              <label className="field-label wide">Description <span>Optional</span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What will this deck help you remember?" /></label>
-              <div className="field-label color-field">Accent color<div className="color-options">{colorOptions.map((option) => <button key={option} type="button" className={`${option} ${color === option ? 'selected' : ''}`} onClick={() => setColor(option)} aria-label={`Use ${option} accent`}><Icon name="check" size={13} /></button>)}</div></div>
-            </div>
-          </section>
-
-          <section className="cards-builder-section">
-            <div className="builder-heading"><div><h2>{mode === 'ai' ? 'Review your cards' : 'Add your cards'}</h2><p>{mode === 'ai' ? 'AI made the first draft. You have the final word.' : 'Keep each card focused on one idea.'}</p></div><span>{completeCards.length} ready</span></div>
-            <div className="card-editor-list">
-              {cards.map((card, index) => <CardEditor key={card.id} card={card} index={index} onChange={(next) => updateCard(index, next)} onDelete={() => deleteCard(index)} />)}
-            </div>
-            <button className="add-card-button" type="button" onClick={() => setCards((current) => [...current, blankCard()])}><Icon name="plus" size={18} /> Add another card</button>
-            {mode === 'ai' && <button className="text-button regenerate-link" type="button" onClick={() => { setCards([]); setTitle(''); setDescription(''); setLocalError('') }}><Icon name="refresh" size={15} /> Start over with a different prompt</button>}
-          </section>
-
-          <div className="builder-footer"><Link className="button button-ghost" to="/decks">Cancel</Link><button className="button button-primary" type="button" disabled={saving} onClick={handleSave}>{saving ? <><span className="button-spinner" /> Saving…</> : <><Icon name="save" size={17} /> Save deck</>}</button></div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
 
+function GenerationControls({ mode, count, setCounts, generating, onGenerate }) {
+  return (
+    <div className="generator-row">
+      <label className="field-label compact">Number of cards<select value={count} onChange={(event) => setCounts((current) => ({ ...current, [mode]: Number(event.target.value) }))}><option value="5">5 cards</option><option value="8">8 cards</option><option value="10">10 cards</option><option value="15">15 cards</option><option value="20">20 cards</option></select></label>
+      <button className="button button-primary generate-button" type="button" onClick={onGenerate} disabled={generating}>{generating ? <><span className="button-spinner" /> Creating your cards…</> : <><Icon name="sparkles" size={18} /> Generate cards</>}</button>
+    </div>
+  )
+}

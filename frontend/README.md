@@ -38,6 +38,7 @@ When using the real API, allow `http://localhost:5173` in Django CORS/CSRF setti
 npm run dev      # start the development server
 npm run build    # create a production build in dist/
 npm run preview  # serve the production build locally
+npm test         # run scheduling and study-feature unit tests
 ```
 
 ## Product flows
@@ -45,8 +46,10 @@ npm run preview  # serve the production build locally
 - Dashboard with deck search, card totals, mastery, and last-studied dates
 - Manual deck creation with editable front/back card rows
 - AI generation preview with editable/deletable cards before saving
+- Pasted-notes generation with source-derived mock previews and a pending real API contract
 - Deck detail editing, card CRUD, deck deletion, and AI generation into an existing deck
 - Study mode with flip animation, previous/next navigation, recall ratings, completion summary, and local mastery updates
+- Independent post-session study coaching that never blocks or retries a saved schedule
 - Login/signup forms with protected learner routes; demo mode accepts any non-empty email/password
 - Responsive navigation and light/dark themes
 

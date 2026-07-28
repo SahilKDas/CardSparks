@@ -19,7 +19,7 @@ const SESSION_LIMIT = 100
 export default function Study() {
   const { deckId } = useParams()
   const navigate = useNavigate()
-  const { decks, loading, getStudyQueue, recordStudy } = useApp()
+  const { decks, loading, getStudyQueue, recordStudy, getStudyFeedback } = useApp()
 
   const deck = useMemo(
     () => decks.find((item) => String(item.id) === String(deckId)),
@@ -37,12 +37,17 @@ export default function Study() {
   const [complete, setComplete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [coachStatus, setCoachStatus] = useState('idle')
+  const [coachFeedback, setCoachFeedback] = useState('')
+  const [coachError, setCoachError] = useState('')
   const submitStarted = useRef(false)
+  const coachRequestGeneration = useRef(0)
 
   const card = queue[index]
 
   useEffect(() => {
     let cancelled = false
+    coachRequestGeneration.current += 1
     setQueueStatus('loading')
     setQueueError('')
 
@@ -55,6 +60,9 @@ export default function Study() {
         setResults([])
         setComplete(false)
         setSaveError('')
+        setCoachStatus('idle')
+        setCoachFeedback('')
+        setCoachError('')
         submitStarted.current = false
         setQueueStatus('ready')
       })
@@ -69,25 +77,43 @@ export default function Study() {
     }
   }, [deckId, session, getStudyQueue])
 
+  const requestCoach = useCallback(async (feedbackResults) => {
+    const requestGeneration = coachRequestGeneration.current + 1
+    coachRequestGeneration.current = requestGeneration
+    setCoachStatus('loading')
+    setCoachFeedback('')
+    setCoachError('')
+    try {
+      const feedback = await getStudyFeedback(deckId, feedbackResults)
+      if (requestGeneration !== coachRequestGeneration.current) return
+      setCoachFeedback(feedback)
+      setCoachStatus('ready')
+    } catch (error) {
+      if (requestGeneration !== coachRequestGeneration.current) return
+      setCoachError(error.message)
+      setCoachStatus('error')
+    }
+  }, [deckId, getStudyFeedback])
+
   const submit = useCallback(async (finalResults) => {
     if (submitStarted.current) return
     submitStarted.current = true
     setSaving(true)
     setComplete(true)
     setSaveError('')
+    setCoachStatus('idle')
+    const feedbackResults = finalResults.map(({ cardId, worstGrade }) => ({ cardId, grade: worstGrade }))
     try {
       // The server schedules from the worst grade the card received this session.
-      await recordStudy(
-        deckId,
-        finalResults.map(({ cardId, worstGrade }) => ({ cardId, grade: worstGrade })),
-      )
+      await recordStudy(deckId, feedbackResults)
+      void requestCoach(feedbackResults)
     } catch (error) {
       setSaveError(error.message)
       submitStarted.current = false
     } finally {
       setSaving(false)
     }
-  }, [deckId, recordStudy])
+  }, [deckId, recordStudy, requestCoach])
 
   const rate = useCallback((grade) => {
     if (!card || submitStarted.current) return
@@ -218,6 +244,7 @@ export default function Study() {
     const firstTry = total - missed
     const score = total ? Math.round((firstTry / total) * 100) : 0
     const longest = results.reduce((max, result) => Math.max(max, result.intervalDays || 0), 0)
+    const feedbackResults = results.map(({ cardId, worstGrade }) => ({ cardId, grade: worstGrade }))
 
     return (
       <div className="study-page study-complete-page">
@@ -236,6 +263,18 @@ export default function Study() {
           </div>
           {saving && <p className="saving-note">Saving your progress…</p>}
           {saveError && <p className="save-error">Your ratings didn’t save: {saveError}</p>}
+          {!saving && !saveError && (
+            <section className={`coach-panel coach-${coachStatus}`} aria-labelledby="coach-heading">
+              <span className="coach-icon"><Icon name="sparkles" size={20} /></span>
+              <div>
+                <span className="eyebrow">AI study coach</span>
+                <h2 id="coach-heading">Your next best move</h2>
+                {coachStatus === 'loading' && <p role="status" aria-live="polite">Reading your results and finding the most useful next step…</p>}
+                {coachStatus === 'ready' && <p>{coachFeedback}</p>}
+                {coachStatus === 'error' && <><p>Your progress is safely saved, but coaching is unavailable: {coachError}</p><button className="text-button coach-retry" type="button" onClick={() => requestCoach(feedbackResults)}><Icon name="refresh" size={14} /> Retry coaching</button></>}
+              </div>
+            </section>
+          )}
           <div className="complete-actions">
             {saveError ? <button className="button button-secondary" type="button" onClick={() => submit(results)}><Icon name="refresh" size={16} /> Retry saving</button> : <button className="button button-secondary" type="button" disabled={saving} onClick={() => setSession((value) => value + 1)}><Icon name="refresh" size={16} /> Study what’s left</button>}
             <button className="button button-primary" type="button" disabled={saving} onClick={() => navigate(`/decks/${deck.id}`)}>

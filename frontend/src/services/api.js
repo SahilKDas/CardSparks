@@ -10,6 +10,7 @@ import {
   scheduleOf,
   sm2,
 } from '../lib/sm2'
+import { buildMockCardsFromNotes, buildMockStudyFeedback } from '../lib/studyFeatures'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -248,6 +249,11 @@ const mockApi = {
     return changedDeck
   },
   generateCards: mockGenerate,
+  async generateCardsFromNotes(sourceText, number) {
+    await wait(700)
+    return buildMockCardsFromNotes(sourceText, number).map((card) =>
+      normalizeCard({ ...card, id: uid('generated'), mastery: 0 }))
+  },
   async generateIntoDeck(deckId, topic, number) {
     const cards = await mockGenerate(topic, number)
     const deck = await this.getDeck(deckId)
@@ -288,6 +294,11 @@ const mockApi = {
     })
 
     return this.updateDeck(deckId, { cards, lastStudied: now.toISOString() })
+  },
+  async getStudyFeedback(deckId, results) {
+    await wait(520)
+    const deck = await this.getDeck(deckId)
+    return buildMockStudyFeedback(results, deck.cards)
   },
   async authenticate(mode, credentials) {
     await wait(500)
@@ -337,6 +348,14 @@ const realApi = {
     return (payload.cards || payload.flashcards || []).map((card) =>
       normalizeCard({ ...card, id: card.id || uid('preview') }))
   },
+  async generateCardsFromNotes(sourceText, number) {
+    const payload = await request('/api/decks/generate/', {
+      method: 'POST',
+      body: JSON.stringify({ source_text: sourceText, num_cards: number }),
+    })
+    return (payload.cards || payload.flashcards || []).map((card) =>
+      normalizeCard({ ...card, id: card.id || uid('preview') }))
+  },
   async generateIntoDeck(deckId, topic, number) {
     const payload = await request(`/api/decks/${deckId}/generate/`, {
       method: 'POST',
@@ -355,6 +374,15 @@ const realApi = {
       body: JSON.stringify({ results }),
     })
     return normalizeDeck(payload.deck || payload)
+  },
+  async getStudyFeedback(deckId, results) {
+    const payload = await request(`/api/decks/${deckId}/study-feedback/`, {
+      method: 'POST',
+      body: JSON.stringify({ results }),
+    })
+    const feedback = String(payload?.feedback || '').trim()
+    if (!feedback) throw new Error('The study coach returned no feedback. Please try again.')
+    return feedback.slice(0, 300)
   },
   async authenticate(mode, credentials) {
     localStorage.removeItem(TOKEN_KEY)
