@@ -4,4 +4,8 @@ dist/
 .env.local
 .DS_Store
 *.log
-
+venv/
+backend/db.sqlite3
+backend/.env
+__pycache__/
+*.pyc
