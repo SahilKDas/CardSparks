@@ -1,14 +1,14 @@
 from rest_framework import serializers
-from django.db import transaction
 from django.utils import timezone
 from .models import Deck, Card
+from .generation import MAX_CARDS, MIN_CARDS, MAX_NOTES_LENGTH, MIN_NOTES_LENGTH
 
 class CardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Card
         fields = ["id", "front", "back", "mastery", "position",
             "easiness", "repetitions", "interval_days",
-            "due_at", "last_reviewed_at", "lapses",
+            "due_at", "last_reviewed_at", "lapses", 
             "created_at", "updated_at"]
         read_only_fields = [
             "mastery", "easiness", "repetitions", "interval_days",
@@ -30,12 +30,11 @@ class DeckSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         cards_data = validated_data.pop("cards", [])
-        with transaction.atomic():
-            deck = Deck.objects.create(**validated_data)
-            Card.objects.bulk_create([
-                Card(deck=deck, front=card["front"], back=card["back"], position=index)
-                for index, card in enumerate(cards_data)
-            ])
+        deck = Deck.objects.create(**validated_data)
+        Card.objects.bulk_create([
+            Card(deck=deck, front=card["front"], back=card["back"], position=index)
+            for index, card in enumerate(cards_data)
+        ])
         return deck
 
     def update(self, instance, validated_data):
@@ -64,10 +63,51 @@ class StudyResultSerializer(serializers.Serializer):
 
 
 class StudySessionSerializer(serializers.Serializer):
-    results = StudyResultSerializer(many=True, allow_empty=False)
+    results = StudyResultSerializer(many=True, allow_empty=True)
+
+class GenerateRequestSerializer(serializers.Serializer):
+    """Only accepts a topic or notes"""
+
+    topic = serializers.CharField(required=False, allow_blank=True)
+    source_text = serializers.CharField(required=False, allow_blank=True)
+    num_cards = serializers.IntegerField(required=False, default=8, min_value=MIN_CARDS, max_value=MAX_CARDS)
+
+    def validate(self, attrs):
+        topic = (attrs.get("topic") or "").strip()
+        notes = (attrs.get("source_text") or "").strip()
+
+        print(attrs)
+
+        if topic and notes:
+            raise serializers.ValidationError("Provide either a topic ('topic') or notes ('source_text'), not both.")
+
+        if not topic and not notes:
+            raise serializers.ValidationError("Provide a topic ('topic') or notes ('source_text')")
+
+        if notes:
+            if len(notes) > MAX_NOTES_LENGTH:
+                raise serializers.ValidationError({
+                    "source_text": f"Keep your notes under {MAX_NOTES_LENGTH}"
+                })
+            elif len(notes) < MIN_NOTES_LENGTH:
+                raise serializers.ValidationError({
+                    "source_text": f"Provide more than {MIN_NOTES_LENGTH} characters."
+                })
+
+        attrs["topic"] = topic
+        attrs["source_text"] = notes
+        return attrs
+
+
+class StudyFeedbackResultsSerializer(serializers.Serializer):
+    cardId = serializers.IntegerField()
+    grade = serializers.IntegerField(min_value=0, max_value=5)
+
+class StudyFeedbackSerializer(serializers.Serializer):
+    results = StudyFeedbackResultsSerializer(many=True, allow_empty=False)
 
     def validate_results(self, value):
         card_ids = [result["cardId"] for result in value]
         if len(card_ids) != len(set(card_ids)):
-            raise serializers.ValidationError("Each card may appear only once per study session.")
+            raise serializers.ValidationError("Each card may only appear once per feedback request.")
         return value
