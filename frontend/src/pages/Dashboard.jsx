@@ -4,10 +4,13 @@ import DeckCard from '../components/DeckCard'
 import { EmptyState, ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
 import { useApp } from '../context/useApp'
+import { buildTodaySummary } from '../lib/dashboard'
+import { getStats } from '../services/stats'
 
 export default function Dashboard() {
   const { decks, loading, error, setError, refreshDecks, user } = useApp()
   const [search, setSearch] = useState('')
+  const [streak, setStreak] = useState(null)
   const searchInput = useRef(null)
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   const filteredDecks = useMemo(() => {
@@ -16,6 +19,7 @@ export default function Dashboard() {
   }, [decks, search])
   const totalCards = decks.reduce((sum, deck) => sum + (deck.cards?.length || 0), 0)
   const masteredCards = decks.reduce((sum, deck) => sum + (deck.cards?.filter((card) => (card.mastery || 0) >= 0.8).length || 0), 0)
+  const today = useMemo(() => buildTodaySummary(decks), [decks])
 
   useEffect(() => {
     const focusSearch = (event) => {
@@ -28,6 +32,23 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', focusSearch)
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    // Progress is supplemental on this screen. A stats outage should never
+    // hide the locally available due queue, so failure leaves the streak as an
+    // unobtrusive dash instead of replacing the dashboard with an error state.
+    getStats({ days: 30, horizon: 7 })
+      .then((payload) => {
+        if (!cancelled) setStreak(payload.streak.current)
+      })
+      .catch(() => {
+        if (!cancelled) setStreak(null)
+      })
+
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <div className="page dashboard-page">
       <section className="dashboard-hero">
@@ -37,6 +58,28 @@ export default function Dashboard() {
           <p>What are we getting curious about today?</p>
         </div>
         <Link className="button button-primary hero-create" to="/decks/new"><Icon name="plus" size={18} /> Create a deck</Link>
+      </section>
+
+      <section className="today-panel" aria-labelledby="today-heading">
+        <div className="today-copy">
+          <span className="eyebrow"><Icon name="clock" size={14} /> Daily plan</span>
+          <h2 id="today-heading">Today&apos;s study session</h2>
+          <p>{today.total ? `${today.total} cards are ready across ${today.perDeck.length} ${today.perDeck.length === 1 ? 'deck' : 'decks'}.` : 'You are caught up. New cards will appear here when they are ready.'}</p>
+          <div className="today-metrics" aria-label="Today's study totals">
+            <span><strong>{today.reviews}</strong> reviews</span>
+            <span><strong>{today.newCards}</strong> new cards</span>
+            <span><strong>{streak ?? 'â€”'}</strong> day streak</span>
+            <span><strong>{today.estimatedMinutes}</strong> estimated min</span>
+          </div>
+        </div>
+        <div className="today-action">
+          {today.firstDeckId ? (
+            <Link className="button button-primary" to={`/decks/${today.firstDeckId}/study`}><Icon name="play" size={17} /> Start today&apos;s session</Link>
+          ) : (
+            <span className="today-complete"><Icon name="check" size={18} /> All caught up</span>
+          )}
+          {today.perDeck[0] && <small>Starting with {today.perDeck[0].title} Â· {today.perDeck[0].total} cards</small>}
+        </div>
       </section>
 
       <section className="quick-stats" aria-label="Study overview">
