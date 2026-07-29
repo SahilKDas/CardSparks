@@ -50,7 +50,7 @@ export default function Study() {
   const activeGrades = useMemo(() => {
     if (gradingMode !== 'simple') return GRADES
     const again = GRADES.find((grade) => grade.value === 1)
-    const good = GRADES.find((grade) => grade.value === 4)
+    const good = GRADES.find((grade) => grade.value === 5)
     return [again, { ...good, shortcut: '2' }]
   }, [gradingMode])
 
