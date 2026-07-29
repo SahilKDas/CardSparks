@@ -20,7 +20,7 @@ from .generation import (
     generate_cards,
     generate_feedback,
 )
-from .models import Card, Deck, Review
+from .models import Card, Deck, Review, StudySettings
 from .scheduling import MASTERY_HORIZON_DAYS, Schedule, derive_mastery
 
 
@@ -137,6 +137,7 @@ class DeckApiTests(APITestCase):
 
     def test_study_queue_clamps_invalid_limits_instead_of_crashing(self):
         self.authenticate()
+        StudySettings.objects.create(user=self.user, max_new_cards=200)
         for index in range(1, 105):
             Card.objects.create(deck=self.deck, front=f"F{index}", back=f"B{index}", position=index)
 
@@ -147,6 +148,49 @@ class DeckApiTests(APITestCase):
         self.assertEqual(len(negative.data["cards"]), 1)
         self.assertEqual(huge.status_code, status.HTTP_200_OK)
         self.assertEqual(len(huge.data["cards"]), 100)
+
+    def test_account_and_per_deck_study_settings_limit_the_queue(self):
+        reviewed_cards = [
+            Card.objects.create(
+                deck=self.deck,
+                front=f"Reviewed {index}",
+                back="Answer",
+                last_reviewed_at=timezone.now(),
+            )
+            for index in range(3)
+        ]
+        Card.objects.bulk_create([
+            Card(deck=self.deck, front=f"New {index}", back="Answer")
+            for index in range(3)
+        ])
+        self.authenticate()
+
+        updated = self.client.patch("/api/settings/", {
+            "max_reviews": 2,
+            "max_new_cards": 1,
+            "grading_mode": "simple",
+        }, format="json")
+        account_queue = self.client.get(f"/api/decks/{self.deck.id}/study-queue/?limit=100")
+
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated.data["grading_mode"], "simple")
+        self.assertEqual(len(account_queue.data["cards"]), 3)
+
+        self.client.patch(f"/api/decks/{self.deck.id}/", {
+            "review_limit": 1,
+            "new_card_limit": 2,
+            "grading_mode": "anki",
+        }, format="json")
+        deck_queue = self.client.get(f"/api/decks/{self.deck.id}/study-queue/?limit=100")
+
+        self.assertEqual(len(deck_queue.data["cards"]), 3)
+        self.assertEqual(deck_queue.data["cards"][0]["id"], reviewed_cards[0].id)
+
+    def test_study_settings_require_authentication_and_validate_bounds(self):
+        self.assertEqual(self.client.get("/api/settings/").status_code, status.HTTP_401_UNAUTHORIZED)
+        self.authenticate()
+        invalid = self.client.patch("/api/settings/", {"max_new_cards": 201}, format="json")
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_study_session_rejects_empty_duplicate_and_foreign_results(self):
         foreign_deck = Deck.objects.create(owner=self.other, title="Private")

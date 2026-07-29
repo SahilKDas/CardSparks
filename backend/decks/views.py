@@ -9,8 +9,8 @@ from django.db import transaction
 from django.db.models import F, Q, Count
 
 from .scheduling import apply_review, PASS_THRESHOLD
-from .models import Deck, Card, Review
-from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackSerializer, PublicDeckSerializer, SharingSerializer
+from .models import Deck, Card, Review, StudySettings
+from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackSerializer, PublicDeckSerializer, SharingSerializer, StudySettingsSerializer
 from .generation import GenerationError, GenerationInputError, generate_cards, generate_feedback, generate_cards_from_notes
 from .stats import build_stats
 
@@ -96,9 +96,18 @@ class DeckViewSet(viewsets.ModelViewSet):
             limit = 100
         limit = max(1, min(limit, 100))
 
-        cards = deck.cards.filter(
+        account_settings, _ = StudySettings.objects.get_or_create(user=request.user)
+        review_limit = deck.review_limit if deck.review_limit is not None else account_settings.max_reviews
+        new_card_limit = deck.new_card_limit if deck.new_card_limit is not None else account_settings.max_new_cards
+        due = deck.cards.filter(
             Q(due_at__isnull=True) | Q(due_at__lte=now)
-        ).order_by(F('due_at').asc(nulls_first=True), "position")[:limit]
+        ).order_by(F('due_at').asc(nulls_first=True), "position")
+
+        # last_reviewed_at—not repetitions—distinguishes genuinely new cards.
+        # A failed review resets repetitions to zero but must remain a review.
+        reviews = list(due.filter(last_reviewed_at__isnull=False)[:review_limit])
+        new_cards = list(due.filter(last_reviewed_at__isnull=True)[:new_card_limit])
+        cards = (reviews + new_cards)[:limit]
 
         return Response({"cards": CardSerializer(cards, many=True).data})
 
@@ -226,6 +235,22 @@ class StatsView(APIView):
             history_days=bounded("days", 365, 365),
             horizon_days=bounded("horizon", 30, 90)
         ))
+
+
+class StudySettingsView(APIView):
+    def get_object(self, user):
+        settings_record, _ = StudySettings.objects.get_or_create(user=user)
+        return settings_record
+
+    def get(self, request):
+        return Response(StudySettingsSerializer(self.get_object(request.user)).data)
+
+    def patch(self, request):
+        settings_record = self.get_object(request.user)
+        serializer = StudySettingsSerializer(settings_record, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class CommunityDeckList(APIView):

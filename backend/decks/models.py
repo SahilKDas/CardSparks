@@ -23,6 +23,14 @@ class Deck(models.Model):
     # UUID links are unguessable identifiers, not authorization by themselves:
     # every public endpoint also checks is_public before returning the deck.
     share_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    review_limit = models.PositiveSmallIntegerField(null=True, blank=True)
+    new_card_limit = models.PositiveSmallIntegerField(null=True, blank=True)
+    grading_mode = models.CharField(
+        max_length=10,
+        choices=[("", "Use account default"), ("anki", "Four grades"), ("simple", "Pass/fail")],
+        blank=True,
+        default="",
+    )
     emoji = models.CharField(max_length=8, blank=True, default="✨")
     color = models.CharField(max_length=32, choices=Color.choices, default=Color.CORAL)
     last_studied = models.DateTimeField(null=True, blank=True)
@@ -79,3 +87,30 @@ class Review(models.Model):
                 name="review_grade_between_0_and_5",
             )
         ]
+
+
+class StudySettings(models.Model):
+    class GradingMode(models.TextChoices):
+        ANKI = "anki", "Four grades"
+        SIMPLE = "simple", "Pass/fail"
+
+    # OneToOneField enforces exactly one canonical settings record per user;
+    # views create it lazily so existing accounts need no data migration.
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="study_settings",
+    )
+    max_reviews = models.PositiveSmallIntegerField(
+        default=100,
+        validators=[MinValueValidator(1), MaxValueValidator(1000)],
+    )
+    max_new_cards = models.PositiveSmallIntegerField(
+        default=25,
+        validators=[MinValueValidator(0), MaxValueValidator(200)],
+    )
+    grading_mode = models.CharField(
+        max_length=10,
+        choices=GradingMode.choices,
+        default=GradingMode.ANKI,
+    )

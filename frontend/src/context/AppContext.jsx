@@ -103,6 +103,10 @@ export function AppProvider({ children }) {
   }, [clearSession])
 
   const getStudyQueue = useCallback((deckId, limit) => api.getStudyQueue(deckId, limit), [])
+  const getStudySettings = useCallback(() => api.getStudySettings(), [])
+  const updateStudySettings = useCallback((updates) => api.updateStudySettings(updates), [])
+  const listCommunityDecks = useCallback(() => api.listCommunityDecks(), [])
+  const getSharedDeck = useCallback((token) => api.getSharedDeck(token), [])
 
   const value = useMemo(() => ({
     decks,
@@ -122,9 +126,11 @@ export function AppProvider({ children }) {
     getStudyQueue,
     recordStudy: (deckId, results) => runMutation(() => api.recordStudy(deckId, results)),
     getStudyFeedback: (deckId, results) => api.getStudyFeedback(deckId, results),
+    getStudySettings,
+    updateStudySettings,
     setDeckSharing: (deckId, isPublic) => runMutation(() => api.setDeckSharing(deckId, isPublic)),
-    listCommunityDecks: () => api.listCommunityDecks(),
-    getSharedDeck: (token) => api.getSharedDeck(token),
+    listCommunityDecks,
+    getSharedDeck,
     duplicateSharedDeck: (token) => runMutation(() => api.duplicateSharedDeck(token)),
     theme,
     toggleTheme: () => setTheme((current) => current === 'light' ? 'dark' : 'light'),
@@ -143,7 +149,7 @@ export function AppProvider({ children }) {
       clearSession()
     },
     isMockMode: USE_MOCK_API,
-  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, theme, user, isAuthenticated, clearSession])
+  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, getStudySettings, updateStudySettings, listCommunityDecks, getSharedDeck, theme, user, isAuthenticated, clearSession])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

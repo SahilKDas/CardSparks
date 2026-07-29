@@ -19,7 +19,7 @@ const SESSION_LIMIT = 100
 export default function Study() {
   const { deckId } = useParams()
   const navigate = useNavigate()
-  const { decks, loading, getStudyQueue, recordStudy, getStudyFeedback } = useApp()
+  const { decks, loading, getStudyQueue, recordStudy, getStudyFeedback, getStudySettings } = useApp()
 
   const deck = useMemo(
     () => decks.find((item) => String(item.id) === String(deckId)),
@@ -30,6 +30,7 @@ export default function Study() {
   const [queueStatus, setQueueStatus] = useState('loading')
   const [queueError, setQueueError] = useState('')
   const [session, setSession] = useState(0)
+  const [gradingMode, setGradingMode] = useState('anki')
 
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -44,6 +45,12 @@ export default function Study() {
   const coachRequestGeneration = useRef(0)
 
   const card = queue[index]
+  const activeGrades = useMemo(() => {
+    if (gradingMode !== 'simple') return GRADES
+    const again = GRADES.find((grade) => grade.value === 1)
+    const good = GRADES.find((grade) => grade.value === 4)
+    return [again, { ...good, shortcut: '2' }]
+  }, [gradingMode])
 
   useEffect(() => {
     let cancelled = false
@@ -51,10 +58,11 @@ export default function Study() {
     setQueueStatus('loading')
     setQueueError('')
 
-    getStudyQueue(deckId, SESSION_LIMIT)
-      .then((cards) => {
+    Promise.all([getStudyQueue(deckId, SESSION_LIMIT), getStudySettings()])
+      .then(([cards, settings]) => {
         if (cancelled) return
         setQueue(cards)
+        setGradingMode(deck?.gradingMode || settings.grading_mode || 'anki')
         setIndex(0)
         setFlipped(false)
         setResults([])
@@ -75,7 +83,7 @@ export default function Study() {
     return () => {
       cancelled = true
     }
-  }, [deckId, session, getStudyQueue])
+  }, [deckId, session, getStudyQueue, getStudySettings, deck?.gradingMode])
 
   const requestCoach = useCallback(async (feedbackResults) => {
     const requestGeneration = coachRequestGeneration.current + 1
@@ -170,7 +178,7 @@ export default function Study() {
         return
       }
       if (!flipped) return
-      const match = GRADES.find((grade) => grade.shortcut === event.key)
+      const match = activeGrades.find((grade) => grade.shortcut === event.key)
       if (match) {
         event.preventDefault()
         rate(match.value)
@@ -179,7 +187,7 @@ export default function Study() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [complete, queueStatus, card, flipped, rate])
+  }, [complete, queueStatus, card, flipped, rate, activeGrades])
 
   if (loading || queueStatus === 'loading') {
     return <div className="page"><Spinner label="Building your review queue" /></div>
@@ -337,7 +345,7 @@ export default function Study() {
 
         {flipped ? (
           <div className="rating-actions grades">
-            {GRADES.map((grade) => (
+            {activeGrades.map((grade) => (
               <button
                 key={grade.value}
                 className={`rating-button ${grade.tone}`}
@@ -359,7 +367,7 @@ export default function Study() {
 
       <footer className="study-footer">
         <span><kbd>Space</kbd> Flip card</span>
-        {GRADES.map((grade) => (
+        {activeGrades.map((grade) => (
           <span key={grade.value}><kbd>{grade.shortcut}</kbd> {grade.label}</span>
         ))}
       </footer>

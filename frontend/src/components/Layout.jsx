@@ -72,6 +72,7 @@ export default function Layout() {
                     <strong>{user?.name}</strong>
                     <span>{user?.email}</span>
                   </div>
+                  <Link className="profile-menu-link" to="/settings" onClick={() => setProfileOpen(false)}><Icon name="clock" size={17} /> Study settings</Link>
                   <button type="button" onClick={() => { logout(); setProfileOpen(false) }}><Icon name="logout" size={17} /> Sign out</button>
                 </div>
               )}

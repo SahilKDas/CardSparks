@@ -11,6 +11,7 @@ import Stats from './pages/Stats'
 import Study from './pages/Study'
 import Community from './pages/Community'
 import SharedDeck from './pages/SharedDeck'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="decks" element={<Dashboard />} />
           <Route path="stats" element={<Stats />} />
           <Route path="community" element={<Community />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="decks/new" element={<CreateDeck />} />
           <Route path="decks/:deckId" element={<DeckDetail />} />
           <Route path="decks/:deckId/study" element={<Study />} />

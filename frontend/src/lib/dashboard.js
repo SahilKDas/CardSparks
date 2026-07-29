@@ -12,7 +12,9 @@ const DEFAULT_CARDS_PER_MINUTE = 6
 export function buildTodaySummary(decks, now = Date.now(), cardsPerMinute = DEFAULT_CARDS_PER_MINUTE) {
   const perDeck = (Array.isArray(decks) ? decks : []).map((deck) => {
     const dueCards = (deck.cards || []).filter((card) => isDue(card, now))
-    const newCards = dueCards.filter((card) => Number(card.repetitions || 0) === 0).length
+    // Failed reviews reset repetitions to zero, so lastReviewedAt is the only
+    // reliable way to distinguish an unseen card from a lapsed review.
+    const newCards = dueCards.filter((card) => !card.lastReviewedAt).length
 
     return {
       id: deck.id,

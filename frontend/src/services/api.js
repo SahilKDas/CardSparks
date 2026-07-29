@@ -16,6 +16,8 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localh
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 const DECKS_KEY = 'cardsparks.demo.decks'
+const SETTINGS_KEY = 'cardsparks.study.settings'
+const DEFAULT_STUDY_SETTINGS = { max_reviews: 100, max_new_cards: 25, grading_mode: 'anki' }
 export const TOKEN_KEY = 'cardsparks.auth.token'
 export const AUTH_EXPIRED_EVENT = 'cardsparks:auth-expired'
 const wait = (ms = 320) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -105,6 +107,9 @@ function normalizeDeck(deck) {
     isPublic: Boolean(deck.isPublic ?? deck.is_public),
     shareToken: String(deck.shareToken || deck.share_token || ''),
     author: String(deck.author || ''),
+    reviewLimit: deck.reviewLimit ?? deck.review_limit ?? null,
+    newCardLimit: deck.newCardLimit ?? deck.new_card_limit ?? null,
+    gradingMode: String(deck.gradingMode ?? deck.grading_mode ?? ''),
     lastStudied: deck.lastStudied || deck.last_studied || null,
     createdAt: deck.createdAt || deck.created_at,
     updatedAt: deck.updatedAt || deck.updated_at,
@@ -273,8 +278,16 @@ const mockApi = {
   async getStudyQueue(deckId, limit = 100) {
     await wait(200)
     const deck = await this.getDeck(deckId)
+    const settings = await this.getStudySettings()
     const now = Date.now()
-    return deck.cards.filter((card) => isDue(card, now)).sort(byDueDate).slice(0, limit)
+    const due = deck.cards.filter((card) => isDue(card, now)).sort(byDueDate)
+    const reviewLimit = deck.reviewLimit ?? settings.max_reviews
+    const newCardLimit = deck.newCardLimit ?? settings.max_new_cards
+    // A failed card has zero repetitions but is not new. lastReviewedAt is the
+    // durable distinction used by the backend and keeps mock mode equivalent.
+    const reviews = due.filter((card) => card.lastReviewedAt).slice(0, reviewLimit)
+    const newCards = due.filter((card) => !card.lastReviewedAt).slice(0, newCardLimit)
+    return [...reviews, ...newCards].slice(0, limit)
   },
   async recordStudy(deckId, results) {
     const deck = await this.getDeck(deckId)
@@ -304,6 +317,20 @@ const mockApi = {
     await wait(520)
     const deck = await this.getDeck(deckId)
     return buildMockStudyFeedback(results, deck.cards)
+  },
+  async getStudySettings() {
+    await wait(120)
+    try {
+      return { ...DEFAULT_STUDY_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }
+    } catch {
+      localStorage.removeItem(SETTINGS_KEY)
+      return { ...DEFAULT_STUDY_SETTINGS }
+    }
+  },
+  async updateStudySettings(updates) {
+    const settings = { ...(await this.getStudySettings()), ...updates }
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+    return settings
   },
   async setDeckSharing(deckId, isPublic) {
     const deck = await this.getDeck(deckId)
@@ -423,6 +450,12 @@ const realApi = {
     const feedback = String(payload?.feedback || '').trim()
     if (!feedback) throw new Error('The study coach returned no feedback. Please try again.')
     return feedback.slice(0, 300)
+  },
+  async getStudySettings() {
+    return request('/api/settings/')
+  },
+  async updateStudySettings(updates) {
+    return request('/api/settings/', { method: 'PATCH', body: JSON.stringify(updates) })
   },
   async setDeckSharing(deckId, isPublic) {
     return normalizeDeck(await request(`/api/decks/${deckId}/sharing/`, {

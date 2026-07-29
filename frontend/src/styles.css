@@ -80,6 +80,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .profile-copy span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .profile-menu > button { width: 100%; margin-top: 6px; padding: 10px 11px; display: flex; align-items: center; gap: 9px; color: var(--muted); background: transparent; border: 0; border-radius: 8px; cursor: pointer; text-align: left; }
 .profile-menu > button:hover { color: var(--text); background: var(--surface-soft); }
+.profile-menu-link { width: 100%; margin-top: 6px; padding: 10px 11px; display: flex; align-items: center; gap: 9px; color: var(--muted); border-radius: 8px; font-size: 10px; }
+.profile-menu-link:hover { color: var(--text); background: var(--surface-soft); }
 .mobile-nav { display: none; }
 
 .page { width: min(1154px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 80px; }
@@ -343,6 +345,7 @@ h1, h2, h3, p { margin-top: 0; }
 .share-link-row { display: flex; gap: 8px; }
 .share-link-row input { min-width: 0; }
 .share-link-row .button { flex: 0 0 auto; }
+.deck-setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; }
 .community-card { padding: 21px; display: flex; flex-direction: column; gap: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 17px; box-shadow: var(--shadow-sm); }
@@ -455,6 +458,7 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
 }
 
 @media (max-width: 680px) {
+  .deck-setting-grid { grid-template-columns: 1fr; }
   .topbar { height: 61px; }
   .topbar-inner { padding: 0 17px; }
   .brand { font-size: 18px; }.brand-mark { width: 33px; height: 33px; }
@@ -866,3 +870,7 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
   .notes-file-drop .button { width: 100%; }
   .authenticated .mobile-nav { grid-template-columns: repeat(5, 1fr); }
 }
+.settings-page { max-width: 760px; }
+.settings-card { padding: 25px; display: grid; gap: 21px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-sm); }
+.settings-actions { padding-top: 17px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--border); }
+.settings-actions span { color: var(--green); font-size: 9px; }

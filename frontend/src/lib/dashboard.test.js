@@ -8,14 +8,14 @@ test('today summary separates new cards from reviews and chooses the largest que
     {
       id: 'small',
       title: 'Small deck',
-      cards: [{ repetitions: 2, dueAt: '2026-07-29T10:00:00Z' }],
+      cards: [{ repetitions: 2, dueAt: '2026-07-29T10:00:00Z', lastReviewedAt: '2026-07-20T10:00:00Z' }],
     },
     {
       id: 'large',
       title: 'Large deck',
       cards: [
         { repetitions: 0, dueAt: null },
-        { repetitions: 1, dueAt: '2026-07-28T10:00:00Z' },
+        { repetitions: 1, dueAt: '2026-07-28T10:00:00Z', lastReviewedAt: '2026-07-20T10:00:00Z' },
         { repetitions: 2, dueAt: '2026-08-01T10:00:00Z' },
       ],
     },

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
-from .models import Deck, Card
+from .models import Deck, Card, StudySettings
 from .generation import MAX_CARDS, MIN_CARDS, MAX_NOTES_LENGTH, MIN_NOTES_LENGTH
 
 class CardSerializer(serializers.ModelSerializer):
@@ -31,6 +31,7 @@ class DeckSerializer(serializers.ModelSerializer):
         fields = [
             "id", "title", "description", "folder", "tags", "emoji", "color",
             "is_public", "share_token",
+            "review_limit", "new_card_limit", "grading_mode",
             "last_studied", "created_at", "updated_at", "due_count", "cards"
         ]
         read_only_fields = ["last_studied", "created_at", "updated_at", "is_public", "share_token"]
@@ -67,6 +68,16 @@ class DeckSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Use no more than 10 tags per deck.")
         return normalized
 
+    def validate_review_limit(self, value):
+        if value is not None and not 1 <= value <= 1000:
+            raise serializers.ValidationError("Review limit must be between 1 and 1,000.")
+        return value
+
+    def validate_new_card_limit(self, value):
+        if value is not None and not 0 <= value <= 200:
+            raise serializers.ValidationError("New-card limit must be between 0 and 200.")
+        return value
+
     def get_due_count(self, deck):
         annotated = getattr(deck, "due_cards", None)
         if annotated is not None:
@@ -101,6 +112,12 @@ class PublicDeckSerializer(serializers.ModelSerializer):
             "title", "description", "folder", "tags", "emoji", "color",
             "share_token", "author", "created_at", "cards",
         ]
+
+
+class StudySettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudySettings
+        fields = ["max_reviews", "max_new_cards", "grading_mode"]
 
 
 
