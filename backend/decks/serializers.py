@@ -20,11 +20,16 @@ class CardSerializer(serializers.ModelSerializer):
 class DeckSerializer(serializers.ModelSerializer):
     cards = CardSerializer(many=True, required=False)
     due_count = serializers.SerializerMethodField()
+    tags = serializers.ListField(
+        child=serializers.CharField(max_length=30),
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Deck
         fields = [
-            "id", "title", "description", "emoji", "color",
+            "id", "title", "description", "folder", "tags", "emoji", "color",
             "last_studied", "created_at", "updated_at", "due_count", "cards"
         ]
         read_only_fields = ["last_studied", "created_at", "updated_at"]
@@ -42,6 +47,24 @@ class DeckSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         validated_data.pop("cards", None)
         return super().update(instance, validated_data)
+
+    def validate_folder(self, value):
+        return value.strip()
+
+    def validate_tags(self, value):
+        # Deduplicate case-insensitively while preserving the learner's casing
+        # and first-entered order for predictable display in the UI.
+        normalized = []
+        seen = set()
+        for raw_tag in value:
+            tag = raw_tag.strip()
+            key = tag.casefold()
+            if tag and key not in seen:
+                normalized.append(tag)
+                seen.add(key)
+        if len(normalized) > 10:
+            raise serializers.ValidationError("Use no more than 10 tags per deck.")
+        return normalized
 
     def get_due_count(self, deck):
         annotated = getattr(deck, "due_cards", None)

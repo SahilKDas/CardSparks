@@ -29,6 +29,7 @@ export default function DeckCard({ deck }) {
         </div>
         <h3>{deck.title}</h3>
         <p>{deck.description || 'A focused deck, ready when you are.'}</p>
+        {(deck.folder || deck.tags?.length > 0) && <div className="deck-labels">{deck.folder && <span className="folder-label">{deck.folder}</span>}{deck.tags?.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div>}
         <div className="deck-meta">
           <span><Icon name="cards" size={15} /> {total} {total === 1 ? 'card' : 'cards'}</span>
           <span><Icon name="clock" size={15} /> {relativeDate(deck.lastStudied)}</span>

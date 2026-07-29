@@ -10,11 +10,12 @@ import {
   validateStudyNotes,
 } from '../lib/studyFeatures'
 import { extractNotesFile, NOTES_FILE_ACCEPT } from '../lib/fileNotes'
+import { parseTags } from '../lib/organize'
 
 const colorOptions = ['coral', 'violet', 'blue', 'green', 'yellow']
 
 function newDraft(cards = []) {
-  return { title: '', description: '', cards, color: 'coral', emoji: '✨' }
+  return { title: '', description: '', folder: '', tagsText: '', cards, color: 'coral', emoji: '✨' }
 }
 
 export default function CreateDeck() {
@@ -155,6 +156,8 @@ export default function CreateDeck() {
       const deck = await createDeck({
         title: draft.title.trim(),
         description: draft.description.trim(),
+        folder: draft.folder.trim(),
+        tags: parseTags(draft.tagsText),
         emoji: draft.emoji,
         color: draft.color,
         cards: cleanedCards,
@@ -232,6 +235,8 @@ export default function CreateDeck() {
                 <label className="emoji-picker">Cover<input value={draft.emoji} onChange={(event) => updateDraft(mode, { emoji: Array.from(event.target.value).slice(0, 4).join('') })} maxLength="8" aria-label="Deck emoji" /></label>
                 <label className="field-label">Deck name<input value={draft.title} onChange={(event) => updateDraft(mode, { title: event.target.value })} placeholder="e.g. Cell Biology Essentials" maxLength="256" /></label>
                 <label className="field-label wide">Description <span>Optional</span><input value={draft.description} onChange={(event) => updateDraft(mode, { description: event.target.value })} placeholder="What will this deck help you remember?" /></label>
+                <label className="field-label">Folder <span>Optional</span><input value={draft.folder} onChange={(event) => updateDraft(mode, { folder: event.target.value })} placeholder="e.g. Semester 1" maxLength="80" /></label>
+                <label className="field-label wide">Tags <span>Comma-separated, up to 10</span><input value={draft.tagsText} onChange={(event) => updateDraft(mode, { tagsText: event.target.value })} placeholder="biology, midterm, chapter 4" /></label>
                 <div className="field-label color-field">Accent color<div className="color-options">{colorOptions.map((option) => <button key={option} type="button" className={`${option} ${draft.color === option ? 'selected' : ''}`} onClick={() => updateDraft(mode, { color: option })} aria-label={`Use ${option} accent`}><Icon name="check" size={13} /></button>)}</div></div>
               </div>
             </section>

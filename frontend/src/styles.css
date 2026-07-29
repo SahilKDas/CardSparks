@@ -139,6 +139,9 @@ h1, h2, h3, p { margin-top: 0; }
 .quick-stats strong { font-size: 20px; line-height: 1.1; }
 .quick-stats p span { margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .section-heading { margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.folder-filters { margin: -7px 0 18px; display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; }
+.folder-filters button { flex: 0 0 auto; padding: 6px 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; font-size: 9px; font-weight: 700; }
+.folder-filters button.active { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); }
 .section-heading > div:first-child { display: flex; align-items: baseline; gap: 9px; }
 .section-heading h2 { margin: 0; font-size: 21px; letter-spacing: -.5px; }
 .section-heading > div > span { color: var(--subtle); font-size: 11px; }
@@ -165,6 +168,11 @@ h1, h2, h3, p { margin-top: 0; }
 .deck-card:hover .open-arrow { color: white; background: var(--accent); transform: translateX(2px); }
 .deck-card h3 { margin: 0 0 7px; font-size: 16px; letter-spacing: -.25px; }
 .deck-card-main > p { height: 34px; margin: 0 0 17px; color: var(--muted); font-size: 11px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.deck-labels, .detail-labels { display: flex; flex-wrap: wrap; gap: 5px; }
+.deck-labels { min-height: 20px; margin: -6px 0 13px; }
+.deck-labels span, .detail-labels span { padding: 3px 7px; color: var(--muted); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 99px; font-size: 8px; }
+.deck-labels .folder-label, .detail-labels .folder-label { color: var(--violet); background: color-mix(in srgb, var(--violet) 9%, var(--surface)); }
+.detail-labels { margin: 10px 0; }
 .deck-meta { display: flex; flex-wrap: wrap; gap: 10px 16px; color: var(--subtle); font-size: 10px; }
 .deck-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .deck-progress { padding: 0 20px 15px; }

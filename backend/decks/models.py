@@ -13,6 +13,10 @@ class Deck(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="decks", null=True)
     title = models.CharField(max_length=256)
     description = models.TextField(blank=True)
+    folder = models.CharField(max_length=80, blank=True)
+    # Tags are intentionally embedded metadata: they are small, deck-owned,
+    # and do not need the lifecycle or joins of a separate shared Tag model.
+    tags = models.JSONField(default=list, blank=True)
     emoji = models.CharField(max_length=8, blank=True, default="✨")
     color = models.CharField(max_length=32, choices=Color.choices, default=Color.CORAL)
     last_studied = models.DateTimeField(null=True, blank=True)

@@ -66,6 +66,22 @@ class DeckApiTests(APITestCase):
         self.assertEqual(created.owner, self.user)
         self.assertEqual(list(created.cards.values_list("position", flat=True)), [0, 1])
 
+    def test_deck_organization_metadata_is_normalized_and_bounded(self):
+        self.authenticate()
+        response = self.client.patch(f"/api/decks/{self.deck.id}/", {
+            "folder": "  Semester 1  ",
+            "tags": ["Biology", " biology ", "Exam"],
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["folder"], "Semester 1")
+        self.assertEqual(response.data["tags"], ["Biology", "Exam"])
+
+        too_many = self.client.patch(f"/api/decks/{self.deck.id}/", {
+            "tags": [f"tag-{index}" for index in range(11)],
+        }, format="json")
+        self.assertEqual(too_many.status_code, status.HTTP_400_BAD_REQUEST)
+
     @patch("decks.serializers.Card.objects.bulk_create", side_effect=IntegrityError("card insert failed"))
     def test_create_deck_rolls_back_if_cards_cannot_be_created(self, _bulk_create):
         self.authenticate()

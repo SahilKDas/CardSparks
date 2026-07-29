@@ -5,18 +5,20 @@ import { EmptyState, ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
 import { useApp } from '../context/useApp'
 import { buildTodaySummary } from '../lib/dashboard'
+import { deckMatches } from '../lib/organize'
 import { getStats } from '../services/stats'
 
 export default function Dashboard() {
   const { decks, loading, error, setError, refreshDecks, user } = useApp()
   const [search, setSearch] = useState('')
+  const [folder, setFolder] = useState('all')
   const [streak, setStreak] = useState(null)
   const searchInput = useRef(null)
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
   const filteredDecks = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase()
-    return decks.filter((deck) => deck.title.toLocaleLowerCase().includes(query))
-  }, [decks, search])
+    return decks.filter((deck) => deckMatches(deck, search, folder))
+  }, [decks, search, folder])
+  const folders = useMemo(() => [...new Set(decks.map((deck) => deck.folder).filter(Boolean))].sort(), [decks])
   const totalCards = decks.reduce((sum, deck) => sum + (deck.cards?.length || 0), 0)
   const masteredCards = decks.reduce((sum, deck) => sum + (deck.cards?.filter((card) => (card.mastery || 0) >= 0.8).length || 0), 0)
   const today = useMemo(() => buildTodaySummary(decks), [decks])
@@ -93,8 +95,9 @@ export default function Dashboard() {
       <section className="deck-section">
         <div className="section-heading">
           <div><h2>Your decks</h2><span>{decks.length} total</span></div>
-          <label className="search-field"><Icon name="search" size={18} /><input ref={searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search decks" aria-label="Search decks" /><span className="shortcut">{isMac ? '⌘ K' : 'Ctrl K'}</span></label>
+          <label className="search-field"><Icon name="search" size={18} /><input ref={searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search decks, tags, or cards" aria-label="Search decks, tags, or cards" /><span className="shortcut">{isMac ? '⌘ K' : 'Ctrl K'}</span></label>
         </div>
+        {folders.length > 0 && <div className="folder-filters" aria-label="Filter decks by folder"><button type="button" className={folder === 'all' ? 'active' : ''} onClick={() => setFolder('all')}>All folders</button>{folders.map((item) => <button key={item} type="button" className={folder === item ? 'active' : ''} onClick={() => setFolder(item)}>{item}</button>)}</div>}
 
         {loading ? <Spinner /> : filteredDecks.length ? (
           <div className="deck-grid">
@@ -109,9 +112,9 @@ export default function Dashboard() {
           </div>
         ) : (
           <EmptyState
-            title={search ? 'No decks match that search' : 'Your first spark starts here'}
-            message={search ? 'Try a different title or clear the search.' : 'Create a deck manually or turn any topic into cards with AI.'}
-            action={search ? <button className="button button-secondary" type="button" onClick={() => setSearch('')}>Clear search</button> : <Link className="button button-primary" to="/decks/new"><Icon name="plus" size={17} /> Create your first deck</Link>}
+            title={search || folder !== 'all' ? 'No decks match those filters' : 'Your first spark starts here'}
+            message={search || folder !== 'all' ? 'Try another search or show every folder.' : 'Create a deck manually or turn any topic into cards with AI.'}
+            action={search || folder !== 'all' ? <button className="button button-secondary" type="button" onClick={() => { setSearch(''); setFolder('all') }}>Clear filters</button> : <Link className="button button-primary" to="/decks/new"><Icon name="plus" size={17} /> Create your first deck</Link>}
           />
         )}
       </section>

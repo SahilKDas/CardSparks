@@ -100,6 +100,8 @@ function normalizeDeck(deck) {
     id: String(deck.id),
     title: String(deck.title || deck.name || 'Untitled deck'),
     description: String(deck.description || ''),
+    folder: String(deck.folder || ''),
+    tags: Array.isArray(deck.tags) ? deck.tags.map(String).filter(Boolean).slice(0, 10) : [],
     lastStudied: deck.lastStudied || deck.last_studied || null,
     createdAt: deck.createdAt || deck.created_at,
     updatedAt: deck.updatedAt || deck.updated_at,

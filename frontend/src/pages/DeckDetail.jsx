@@ -5,6 +5,7 @@ import { Icon } from '../components/Icons'
 import Modal from '../components/Modal'
 import { relativeDate } from '../components/DeckCard'
 import { useApp } from '../context/useApp'
+import { parseTags } from '../lib/organize'
 
 export default function DeckDetail() {
   const { deckId } = useParams()
@@ -16,7 +17,7 @@ export default function DeckDetail() {
   const [aiOpen, setAiOpen] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
   const [draft, setDraft] = useState({ front: '', back: '' })
-  const [details, setDetails] = useState({ title: '', description: '' })
+  const [details, setDetails] = useState({ title: '', description: '', folder: '', tagsText: '' })
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiCount, setAiCount] = useState(5)
   const [busy, setBusy] = useState(false)
@@ -66,7 +67,7 @@ export default function DeckDetail() {
     if (!details.title.trim()) return setLocalError('Your deck needs a title.')
     setBusy(true)
     try {
-      await updateDeck(deck.id, { title: details.title.trim(), description: details.description.trim() })
+      await updateDeck(deck.id, { title: details.title.trim(), description: details.description.trim(), folder: details.folder.trim(), tags: parseTags(details.tagsText) })
       setEditingDetails(false)
     } catch (requestError) {
       setLocalError(requestError.message)
@@ -109,11 +110,12 @@ export default function DeckDetail() {
           <span className="eyebrow">Study deck</span>
           <h1>{deck.title}</h1>
           <p>{deck.description || 'A focused deck, ready when you are.'}</p>
+          {(deck.folder || deck.tags?.length > 0) && <div className="detail-labels">{deck.folder && <span className="folder-label">{deck.folder}</span>}{deck.tags?.map((tag) => <span key={tag}>#{tag}</span>)}</div>}
           <div className="detail-meta"><span><Icon name="cards" size={16} /> {deck.cards.length} cards</span><span><Icon name="clock" size={16} /> {relativeDate(deck.lastStudied)}</span><span><Icon name="trophy" size={16} /> {mastered} mastered</span></div>
         </div>
         <div className="detail-actions">
           {deck.cards.length ? <Link className="button button-primary" to={`/decks/${deck.id}/study`}><Icon name="play" size={17} /> Study deck</Link> : <button className="button button-primary" type="button" disabled><Icon name="play" size={17} /> Add cards to study</button>}
-          <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setDetails({ title: deck.title, description: deck.description || '' }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
+          <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setDetails({ title: deck.title, description: deck.description || '', folder: deck.folder || '', tagsText: (deck.tags || []).join(', ') }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
           <button className="icon-button destructive-hover" type="button" onClick={handleDeleteDeck} aria-label="Delete deck"><Icon name="trash" size={18} /></button>
         </div>
       </header>
@@ -147,7 +149,7 @@ export default function DeckDetail() {
       </Modal>}
 
       {editingDetails && <Modal title="Edit deck details" onClose={() => { setEditingDetails(false); setLocalError('') }}>
-        <div className="modal-body form-stack"><label className="field-label">Deck name<input value={details.title} onChange={(event) => setDetails({ ...details, title: event.target.value })} maxLength="256" autoFocus data-autofocus /></label><label className="field-label">Description<textarea rows="3" value={details.description} onChange={(event) => setDetails({ ...details, description: event.target.value })} /></label>{localError && <p className="field-error">{localError}</p>}</div>
+        <div className="modal-body form-stack"><label className="field-label">Deck name<input value={details.title} onChange={(event) => setDetails({ ...details, title: event.target.value })} maxLength="256" autoFocus data-autofocus /></label><label className="field-label">Description<textarea rows="3" value={details.description} onChange={(event) => setDetails({ ...details, description: event.target.value })} /></label><label className="field-label">Folder<input value={details.folder} onChange={(event) => setDetails({ ...details, folder: event.target.value })} maxLength="80" placeholder="e.g. Semester 1" /></label><label className="field-label">Tags<input value={details.tagsText} onChange={(event) => setDetails({ ...details, tagsText: event.target.value })} placeholder="biology, midterm" /></label>{localError && <p className="field-error">{localError}</p>}</div>
         <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setEditingDetails(false); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={saveDetails} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button></div>
       </Modal>}
     </div>
