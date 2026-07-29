@@ -61,30 +61,3 @@ class Review(models.Model):
 
     class Meta:
         ordering = ['-reviewed_at', '-id']
-
-class Settings(models.Model):
-
-    """
-    DECK SETTINGS
-    - "max_reviews" - How many reviews per day (can be per deck or total)
-    - "max_new_cards" - How many new cards per day (can be per deck or total)
-    - "per_deck" - If the "max_*" constraints should be per deck or in total
-
-    "grading_mode": The grading system to use (anki: 4 point grading system like anki ["Again", "Hard", "Good", "Easy"]; simple: pass/fail system)
-    "dark_mode": Whether or not to use a dark theme/dark mode.
-    """
-
-    DEFAULT_USER_SETTINGS = """
-    {
-        "deck_settings": {
-            "max_reviews": 100,
-            "max_new_cards": 25,
-            "per_deck": true,
-        },
-        "grading_mode": "anki",
-        "dark_mode": false
-    }
-    """
-
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="settings")
-    settings_data = models.JSONField(default=DEFAULT_USER_SETTINGS)
