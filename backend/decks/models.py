@@ -44,9 +44,23 @@ class Deck(models.Model):
         return f'{self.title} ({self.owner.email if self.owner else "Unknown"})'
 
 class Card(models.Model):
+    class CardType(models.TextChoices):
+        BASIC = "basic", "Basic"
+        REVERSIBLE = "reversible", "Reversible"
+        MULTIPLE_CHOICE = "multiple_choice", "Multiple choice"
+        CLOZE = "cloze", "Cloze deletion"
+        IMAGE = "image", "Image"
+
     deck = models.ForeignKey(Deck, on_delete=models.CASCADE, related_name="cards")
     front = models.TextField()
     back = models.TextField()
+    # Type-specific fields stay on Card so copies and API-created decks retain
+    # their complete learning behavior. Non-choice cards store an empty list;
+    # serializer validation keeps mutually exclusive metadata normalized.
+    card_type = models.CharField(max_length=24, choices=CardType.choices, default=CardType.BASIC)
+    choices = models.JSONField(default=list, blank=True)
+    correct_index = models.PositiveSmallIntegerField(null=True, blank=True)
+    image_url = models.URLField(blank=True)
     mastery = models.FloatField(default=0.0, validators=[MinValueValidator(0.0), MaxValueValidator(1.0)])
     position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

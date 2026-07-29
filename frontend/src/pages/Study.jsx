@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ErrorBanner, Spinner } from '../components/Feedback'
 import { Icon } from '../components/Icons'
 import { useApp } from '../context/useApp'
+import { studyFaces } from '../lib/cardTypes'
 import {
   GRADES,
   PASS_THRESHOLD,
@@ -34,6 +35,7 @@ export default function Study() {
 
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
+  const [selectedChoice, setSelectedChoice] = useState(null)
   const [results, setResults] = useState([])
   const [complete, setComplete] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -65,6 +67,7 @@ export default function Study() {
         setGradingMode(deck?.gradingMode || settings.grading_mode || 'anki')
         setIndex(0)
         setFlipped(false)
+        setSelectedChoice(null)
         setResults([])
         setComplete(false)
         setSaveError('')
@@ -140,6 +143,7 @@ export default function Study() {
     ]
     setResults(next)
     setFlipped(false)
+    setSelectedChoice(null)
 
     const answered = new Set(
       next.filter((item) => item.lastGrade >= PASS_THRESHOLD).map((item) => item.cardId),
@@ -300,6 +304,17 @@ export default function Study() {
 
   const priorWorst = results.find((result) => result.cardId === card.id)?.worstGrade ?? 5
   const isRepeat = priorWorst < PASS_THRESHOLD
+  const faces = studyFaces(card)
+  const isMultipleChoice = card.cardType === 'multiple_choice'
+  const correctChoice = Number.isInteger(card.correctIndex) ? card.correctIndex : 0
+
+  function chooseAnswer(choiceIndex) {
+    // Selecting an option only reveals the answer. The learner still grades
+    // recall separately, which keeps multiple-choice cards on the same SM-2
+    // scheduling path as every other card type.
+    setSelectedChoice(choiceIndex)
+    setFlipped(true)
+  }
 
   return (
     <div className="study-page">
@@ -331,17 +346,37 @@ export default function Study() {
         >
           <div className="flashcard-inner">
             <section className="flashcard-face flashcard-front">
-              <span>Question</span>
-              <p>{card.front}</p>
+              <span>{faces.frontLabel}</span>
+              {card.cardType === 'image' && <img className="study-card-image" src={card.imageUrl} alt="Study card reference" />}
+              <p>{faces.front}</p>
               <small>Click to flip <Icon name="rotate" size={14} /></small>
             </section>
             <section className="flashcard-face flashcard-back">
-              <span>Answer</span>
-              <p>{card.back}</p>
+              <span>{faces.backLabel}</span>
+              <p>{faces.back}</p>
               <small>Click to see the question <Icon name="rotate" size={14} /></small>
             </section>
           </div>
         </button>
+
+        {isMultipleChoice && !flipped && (
+          <fieldset className="study-choice-list">
+            <legend>Choose an answer</legend>
+            {card.choices.map((choice, choiceIndex) => (
+              <button key={`${choiceIndex}-${choice}`} type="button" onClick={() => chooseAnswer(choiceIndex)}>
+                <span>{String.fromCharCode(65 + choiceIndex)}</span>{choice}
+              </button>
+            ))}
+          </fieldset>
+        )}
+
+        {isMultipleChoice && flipped && selectedChoice !== null && (
+          <p className={`choice-result ${selectedChoice === correctChoice ? 'is-correct' : 'is-incorrect'}`} role="status" aria-live="polite">
+            {selectedChoice === correctChoice
+              ? 'Correct choice. Now rate how confidently you knew it.'
+              : `The correct choice was ${String.fromCharCode(65 + correctChoice)}. Use Again if this surprised you.`}
+          </p>
+        )}
 
         {flipped ? (
           <div className="rating-actions grades">

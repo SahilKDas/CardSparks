@@ -80,6 +80,10 @@ export function normalizeCard(card) {
     id: String(card.id),
     front: String(card.front || card.question || ''),
     back: String(card.back || card.answer || ''),
+    cardType: String(card.cardType || card.card_type || 'basic'),
+    choices: Array.isArray(card.choices) ? card.choices.map(String) : [],
+    correctIndex: card.correctIndex ?? card.correct_index ?? null,
+    imageUrl: String(card.imageUrl || card.image_url || ''),
     mastery: Math.max(0, Math.min(1, mastery)),
     position: Math.max(0, finiteNumber(card.position, 0)),
     easiness: Math.max(1.3, finiteNumber(card.easiness, DEFAULT_EASINESS)),
@@ -88,6 +92,20 @@ export function normalizeCard(card) {
     lapses: Math.max(0, finiteNumber(card.lapses, 0)),
     dueAt: card.dueAt || card.due_at || null,
     lastReviewedAt: card.lastReviewedAt || card.last_reviewed_at || null,
+  }
+}
+
+function cardRequest(card) {
+  // The React app uses camelCase while Django deliberately exposes snake_case.
+  // Keeping that translation in one adapter prevents mock and real mode from
+  // drifting as new card representations are added.
+  return {
+    front: card.front,
+    back: card.back,
+    card_type: card.cardType || card.card_type || 'basic',
+    choices: card.choices || [],
+    correct_index: card.correctIndex ?? card.correct_index ?? null,
+    image_url: card.imageUrl || card.image_url || '',
   }
 }
 
@@ -364,7 +382,7 @@ const mockApi = {
       title: `${source.title} (Copy)`,
       isPublic: false,
       shareToken: '',
-      cards: source.cards.map(({ front, back }) => ({ front, back })),
+      cards: source.cards.map((card) => ({ ...cardRequest(card) })),
     })
   },
   async authenticate(mode, credentials) {
@@ -387,7 +405,10 @@ const realApi = {
     return normalizeDeck(await request(`/api/decks/${id}/`))
   },
   async createDeck(input) {
-    const payload = await request('/api/decks/', { method: 'POST', body: JSON.stringify(input) })
+    const payload = await request('/api/decks/', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, cards: (input.cards || []).map(cardRequest) }),
+    })
     return normalizeDeck(payload)
   },
   async updateDeck(id, updates) {
@@ -397,11 +418,11 @@ const realApi = {
     return request(`/api/decks/${id}/`, { method: 'DELETE' })
   },
   async addCard(deckId, card) {
-    const addedCard = await request(`/api/decks/${deckId}/cards/`, { method: 'POST', body: JSON.stringify(card) })
+    const addedCard = await request(`/api/decks/${deckId}/cards/`, { method: 'POST', body: JSON.stringify(cardRequest(card)) })
     return { deck: await this.getDeck(deckId), card: normalizeCard(addedCard) }
   },
   async updateCard(cardId, updates) {
-    const card = await request(`/api/cards/${cardId}/`, { method: 'PATCH', body: JSON.stringify(updates) })
+    const card = await request(`/api/cards/${cardId}/`, { method: 'PATCH', body: JSON.stringify(cardRequest(updates)) })
     return { card: normalizeCard(card) }
   },
   async deleteCard(cardId) {

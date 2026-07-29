@@ -11,6 +11,7 @@ import {
 } from '../lib/studyFeatures'
 import { extractNotesFile, NOTES_FILE_ACCEPT } from '../lib/fileNotes'
 import { parseTags } from '../lib/organize'
+import { validateCardDraft } from '../lib/cardTypes'
 
 const colorOptions = ['coral', 'violet', 'blue', 'green', 'yellow']
 
@@ -143,6 +144,11 @@ export default function CreateDeck() {
     }
     if (!completeCards.length) {
       setLocalError('Add at least one card with both a front and back.')
+      return
+    }
+    const invalidCardIndex = completeCards.findIndex((card) => validateCardDraft(card))
+    if (invalidCardIndex >= 0) {
+      setLocalError(`Card ${invalidCardIndex + 1}: ${validateCardDraft(completeCards[invalidCardIndex])}`)
       return
     }
     setSaving(true)

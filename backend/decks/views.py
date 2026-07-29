@@ -302,7 +302,16 @@ class DuplicateSharedDeck(APIView):
             color=source.color,
         )
         Card.objects.bulk_create([
-            Card(deck=duplicate, front=card.front, back=card.back, position=index)
+            Card(
+                deck=duplicate,
+                front=card.front,
+                back=card.back,
+                position=index,
+                card_type=card.card_type,
+                choices=list(card.choices),
+                correct_index=card.correct_index,
+                image_url=card.image_url,
+            )
             for index, card in enumerate(source.cards.all())
         ])
         return Response(DeckSerializer(duplicate).data, status=status.HTTP_201_CREATED)

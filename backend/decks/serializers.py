@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
@@ -8,6 +10,7 @@ class CardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Card
         fields = ["id", "front", "back", "mastery", "position",
+            "card_type", "choices", "correct_index", "image_url",
             "easiness", "repetitions", "interval_days",
             "due_at", "last_reviewed_at", "lapses", 
             "created_at", "updated_at"]
@@ -16,6 +19,34 @@ class CardSerializer(serializers.ModelSerializer):
             "due_at", "last_reviewed_at", "lapses",
             "created_at", "updated_at",
         ]
+
+    def validate(self, attrs):
+        card_type = attrs.get("card_type", getattr(self.instance, "card_type", Card.CardType.BASIC))
+        choices = attrs.get("choices", getattr(self.instance, "choices", []))
+        correct_index = attrs.get("correct_index", getattr(self.instance, "correct_index", None))
+        front = attrs.get("front", getattr(self.instance, "front", ""))
+        image_url = attrs.get("image_url", getattr(self.instance, "image_url", ""))
+
+        if card_type == Card.CardType.MULTIPLE_CHOICE:
+            cleaned = [str(choice).strip() for choice in choices]
+            if not 2 <= len(cleaned) <= 6:
+                raise serializers.ValidationError({"choices": "Multiple-choice cards need 2 to 6 choices."})
+            if any(not choice for choice in cleaned):
+                raise serializers.ValidationError({"choices": "Every multiple-choice answer must contain text."})
+            if correct_index is None or not 0 <= correct_index < len(cleaned):
+                raise serializers.ValidationError({"correct_index": "Choose the correct answer."})
+            attrs["choices"] = cleaned
+        else:
+            # Clearing type-specific data prevents stale answers from leaking if
+            # an existing multiple-choice card is converted to another type.
+            attrs["choices"] = []
+            attrs["correct_index"] = None
+
+        if card_type == Card.CardType.CLOZE and not re.search(r"\{\{[^{}]+}}", front):
+            raise serializers.ValidationError({"front": "Wrap the hidden cloze text in double braces, for example {{answer}}."})
+        if card_type == Card.CardType.IMAGE and not image_url:
+            raise serializers.ValidationError({"image_url": "Image cards need an image URL."})
+        return attrs
 
 class DeckSerializer(serializers.ModelSerializer):
     cards = CardSerializer(many=True, required=False)
@@ -41,7 +72,7 @@ class DeckSerializer(serializers.ModelSerializer):
         cards_data = validated_data.pop("cards", [])
         deck = Deck.objects.create(**validated_data)
         Card.objects.bulk_create([
-            Card(deck=deck, front=card["front"], back=card["back"], position=index)
+            Card(deck=deck, position=index, **card)
             for index, card in enumerate(cards_data)
         ])
         return deck

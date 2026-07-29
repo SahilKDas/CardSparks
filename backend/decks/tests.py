@@ -82,6 +82,41 @@ class DeckApiTests(APITestCase):
         }, format="json")
         self.assertEqual(too_many.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_card_types_are_validated_and_serialized(self):
+        self.authenticate()
+        multiple_choice = self.client.post(f"/api/decks/{self.deck.id}/cards/", {
+            "front": "Which organelle produces ATP?",
+            "back": "Mitochondria",
+            "card_type": "multiple_choice",
+            "choices": ["Nucleus", "Mitochondria", "Ribosome"],
+            "correct_index": 1,
+        }, format="json")
+        invalid_cloze = self.client.post(f"/api/decks/{self.deck.id}/cards/", {
+            "front": "Mitochondria produces ATP",
+            "back": "Mitochondria",
+            "card_type": "cloze",
+        }, format="json")
+        invalid_image = self.client.post(f"/api/decks/{self.deck.id}/cards/", {
+            "front": "Identify this structure",
+            "back": "Mitochondria",
+            "card_type": "image",
+        }, format="json")
+        nested_deck = self.client.post("/api/decks/", {
+            "title": "Terminology",
+            "cards": [{
+                "front": "The powerhouse is the {{mitochondrion}}.",
+                "back": "An organelle that produces ATP.",
+                "card_type": "cloze",
+            }],
+        }, format="json")
+
+        self.assertEqual(multiple_choice.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(multiple_choice.data["choices"][1], "Mitochondria")
+        self.assertEqual(invalid_cloze.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(invalid_image.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(nested_deck.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(nested_deck.data["cards"][0]["card_type"], "cloze")
+
     def test_private_decks_are_hidden_and_public_decks_expose_no_owner_email(self):
         private_response = self.client.get(f"/api/shared-decks/{self.deck.share_token}/")
         self.assertEqual(private_response.status_code, status.HTTP_404_NOT_FOUND)

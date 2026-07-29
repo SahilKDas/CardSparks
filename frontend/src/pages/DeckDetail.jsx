@@ -6,6 +6,8 @@ import Modal from '../components/Modal'
 import { relativeDate } from '../components/DeckCard'
 import { useApp } from '../context/useApp'
 import { parseTags } from '../lib/organize'
+import { CARD_TYPES, validateCardDraft } from '../lib/cardTypes'
+import CardEditor, { blankCard } from '../components/CardEditor'
 
 export default function DeckDetail() {
   const { deckId } = useParams()
@@ -18,7 +20,7 @@ export default function DeckDetail() {
   const [editingDetails, setEditingDetails] = useState(false)
   const [sharingOpen, setSharingOpen] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
-  const [draft, setDraft] = useState({ front: '', back: '' })
+  const [draft, setDraft] = useState(blankCard)
   const [details, setDetails] = useState({ title: '', description: '', folder: '', tagsText: '', reviewLimit: '', newCardLimit: '', gradingMode: '' })
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiCount, setAiCount] = useState(5)
@@ -32,18 +34,19 @@ export default function DeckDetail() {
   const mastered = deck.cards.filter((card) => (card.mastery || 0) >= 0.8).length
 
   async function saveCard() {
-    if (!draft.front.trim() || !draft.back.trim()) {
-      setLocalError('Both sides of the card are required.')
+    const validationError = validateCardDraft(draft)
+    if (validationError) {
+      setLocalError(validationError)
       return
     }
     setBusy(true)
     try {
-      const cleanedDraft = { front: draft.front.trim(), back: draft.back.trim() }
+      const cleanedDraft = { ...draft, front: draft.front.trim(), back: draft.back.trim() }
       if (editingCard) await updateCard(editingCard.id, cleanedDraft)
       else await addCard(deck.id, cleanedDraft)
       setEditingCard(null)
       setAddOpen(false)
-      setDraft({ front: '', back: '' })
+      setDraft(blankCard())
     } catch (requestError) {
       setLocalError(requestError.message)
     } finally {
@@ -159,23 +162,23 @@ export default function DeckDetail() {
       <section className="cards-list-section">
         <div className="section-heading detail-list-heading">
           <div><h2>Cards</h2><span>{deck.cards.length} in this deck</span></div>
-          <div className="list-actions"><button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setAiOpen(true) }}><Icon name="wand" size={16} /> Generate more</button><button className="button button-primary" type="button" onClick={() => { setLocalError(''); setDraft({ front: '', back: '' }); setAddOpen(true) }}><Icon name="plus" size={17} /> Add card</button></div>
+          <div className="list-actions"><button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setAiOpen(true) }}><Icon name="wand" size={16} /> Generate more</button><button className="button button-primary" type="button" onClick={() => { setLocalError(''); setDraft(blankCard()); setAddOpen(true) }}><Icon name="plus" size={17} /> Add card</button></div>
         </div>
 
         {deck.cards.length ? <div className="detail-card-list">{deck.cards.map((card, index) => (
           <article className="detail-card-row" key={card.id}>
             <span className="row-index">{String(index + 1).padStart(2, '0')}</span>
-            <div><small>Front</small><p>{card.front}</p></div>
+            <div><small>{CARD_TYPES.find((type) => type.value === card.cardType)?.label || 'Basic'} · Front</small><p>{card.front}</p></div>
             <span className="row-arrow"><Icon name="arrowRight" size={18} /></span>
             <div><small>Back</small><p>{card.back}</p></div>
             <div className="row-mastery" title={`${Math.round((card.mastery || 0) * 100)}% mastery`}><span style={{ '--mastery': `${Math.round((card.mastery || 0) * 100)}%` }} /></div>
-            <div className="row-actions"><button type="button" onClick={() => { setLocalError(''); setEditingCard(card); setDraft({ front: card.front, back: card.back }); }} aria-label={`Edit card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="edit" size={16} /></button><button type="button" onClick={() => handleDeleteCard(card.id)} aria-label={`Delete card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="trash" size={16} /></button></div>
+            <div className="row-actions"><button type="button" onClick={() => { setLocalError(''); setEditingCard(card); setDraft({ ...card }); }} aria-label={`Edit card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="edit" size={16} /></button><button type="button" onClick={() => handleDeleteCard(card.id)} aria-label={`Delete card ${index + 1}`} disabled={deletingCardId === card.id}><Icon name="trash" size={16} /></button></div>
           </article>
         ))}</div> : <div className="inline-empty"><span><Icon name="cards" size={28} /></span><div><h3>This deck is waiting for its first card</h3><p>Add one yourself or ask AI to make a starter set.</p></div></div>}
       </section>
 
       {(addOpen || editingCard) && <Modal title={editingCard ? 'Edit card' : 'Add a new card'} onClose={() => { setAddOpen(false); setEditingCard(null); setLocalError('') }}>
-        <div className="modal-body form-stack"><label className="field-label">Front<textarea rows="4" value={draft.front} onChange={(event) => setDraft({ ...draft, front: event.target.value })} placeholder="Question or prompt" autoFocus data-autofocus /></label><label className="field-label">Back<textarea rows="4" value={draft.back} onChange={(event) => setDraft({ ...draft, back: event.target.value })} placeholder="Answer or explanation" /></label>{localError && <p className="field-error">{localError}</p>}</div>
+        <div className="modal-body form-stack modal-card-editor"><CardEditor card={draft} index={0} onChange={setDraft} showDelete={false} autoFocus />{localError && <p className="field-error">{localError}</p>}</div>
         <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setAddOpen(false); setEditingCard(null); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={saveCard} disabled={busy}>{busy ? 'Saving…' : 'Save card'}</button></div>
       </Modal>}
 
