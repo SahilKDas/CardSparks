@@ -51,6 +51,35 @@ async function mockStats({ days = 365, horizon = 30 } = {}) {
   })
 
   const reviews = heatmap.reduce((sum, day) => sum + day.count, 0)
+  const recentWeeks = Array.from({ length: 8 }, (_, week) => {
+    const slice = heatmap.slice(-(8 - week) * 7, -(7 - week) * 7 || undefined)
+    const weeklyReviews = slice.reduce((sum, day) => sum + day.count, 0)
+    return {
+      date: slice[0]?.date || isoDay(new Date()),
+      reviews: weeklyReviews,
+      retention: weeklyReviews ? 0.82 + (week % 4) * 0.03 : null,
+      active_days: slice.filter((day) => day.count > 0).length,
+    }
+  })
+  const weakestDecks = decks.map((deck) => ({
+    id: deck.id,
+    title: deck.title,
+    emoji: deck.emoji,
+    reviews: deck.cards.reduce((sum, card) => sum + Math.max(1, card.repetitions || 0), 0),
+    retention: deck.cards.length
+      ? deck.cards.reduce((sum, card) => sum + card.mastery, 0) / deck.cards.length
+      : null,
+  })).filter((deck) => deck.retention !== null).sort((left, right) => left.retention - right.retention).slice(0, 5)
+  const difficultCards = cards.map((card) => ({
+    id: card.id,
+    deck_id: decks.find((deck) => deck.cards.some((item) => item.id === card.id))?.id,
+    deck__title: decks.find((deck) => deck.cards.some((item) => item.id === card.id))?.title,
+    front: card.front,
+    lapses: card.lapses || 0,
+    failed_reviews: card.lapses || 0,
+    review_count: card.repetitions || 0,
+    mastery: card.mastery,
+  })).sort((left, right) => right.lapses - left.lapses || left.mastery - right.mastery).slice(0, 8)
 
   return {
     totals: {
@@ -70,6 +99,10 @@ async function mockStats({ days = 365, horizon = 30 } = {}) {
     backlog: cards.filter((card) => isDue(card, now)).length,
     heatmap,
     forecast: denseDays(new Date(), horizon, upcoming),
+    retention_trend: recentWeeks.map(({ date, reviews: count, retention }) => ({ date, reviews: count, retention })),
+    streak_history: recentWeeks.map(({ date, reviews: count, active_days }) => ({ date, reviews: count, active_days })),
+    weakest_decks: weakestDecks,
+    difficult_cards: difficultCards,
   }
 }
 
@@ -101,6 +134,10 @@ function validateStats(payload) {
     && payload.streak
     && Array.isArray(payload.heatmap)
     && Array.isArray(payload.forecast)
+    && Array.isArray(payload.retention_trend)
+    && Array.isArray(payload.streak_history)
+    && Array.isArray(payload.weakest_decks)
+    && Array.isArray(payload.difficult_cards)
     && typeof payload.backlog === 'number'
   if (!valid) throw new Error('The server returned invalid progress data.')
   return payload

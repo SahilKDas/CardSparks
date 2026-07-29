@@ -55,6 +55,42 @@ def _streaks(series, today):
     return {"current": current, "longest": longest}
 
 
+def _weekly_insights(reviews, heatmap, today, weeks=8):
+    """Return aligned retention and activity buckets for the recent weeks."""
+    start = today - timedelta(days=(weeks * 7) - 1)
+    review_rows = {
+        row["day"]: row
+        for row in (
+            reviews.filter(reviewed_at__date__gte=start)
+            .annotate(day=TruncDate("reviewed_at"))
+            .values("day")
+            .annotate(
+                count=Count("id"),
+                passed=Count("id", filter=Q(grade__gte=PASS_THRESHOLD)),
+            )
+        )
+    }
+    activity = {row["date"]: row["count"] for row in heatmap}
+    retention_trend = []
+    streak_history = []
+    for week in range(weeks):
+        week_start = start + timedelta(days=week * 7)
+        dates = [week_start + timedelta(days=offset) for offset in range(7)]
+        count = sum(review_rows.get(day, {}).get("count", 0) for day in dates)
+        passed = sum(review_rows.get(day, {}).get("passed", 0) for day in dates)
+        retention_trend.append({
+            "date": week_start.isoformat(),
+            "reviews": count,
+            "retention": _ratio(passed, count),
+        })
+        streak_history.append({
+            "date": week_start.isoformat(),
+            "active_days": sum(1 for day in dates if activity.get(day.isoformat(), 0) > 0),
+            "reviews": sum(activity.get(day.isoformat(), 0) for day in dates),
+        })
+    return retention_trend, streak_history
+
+
 def build_stats(user, history_days=365, horizon_days=30):
     now = timezone.now()
     today = timezone.localdate()
@@ -94,6 +130,34 @@ def build_stats(user, history_days=365, horizon_days=30):
 
     backlog = cards.filter(Q(due_at__isnull=True) | Q(due_at__lte=now)).count()
 
+    retention_trend, streak_history = _weekly_insights(reviews, heatmap, today)
+    deck_rows = reviews.values(
+        "card__deck_id", "card__deck__title", "card__deck__emoji"
+    ).annotate(
+        reviews=Count("id"),
+        passed=Count("id", filter=Q(grade__gte=PASS_THRESHOLD)),
+    )
+    weakest_decks = sorted([
+        {
+            "id": row["card__deck_id"],
+            "title": row["card__deck__title"],
+            "emoji": row["card__deck__emoji"],
+            "reviews": row["reviews"],
+            "retention": _ratio(row["passed"], row["reviews"]),
+        }
+        for row in deck_rows
+    ], key=lambda row: (row["retention"], -row["reviews"]))[:5]
+
+    difficult_cards = list(
+        cards.annotate(
+            review_count=Count("reviews"),
+            failed_reviews=Count("reviews", filter=Q(reviews__grade__lt=PASS_THRESHOLD)),
+        )
+        .filter(review_count__gt=0)
+        .order_by("-lapses", "-failed_reviews", "mastery", "id")
+        .values("id", "deck_id", "deck__title", "front", "lapses", "failed_reviews", "review_count")[:8]
+    )
+
     return {
         "totals": {
             "reviews": all_time["total"],
@@ -112,4 +176,8 @@ def build_stats(user, history_days=365, horizon_days=30):
         "backlog": backlog,
         "heatmap": heatmap,
         "forecast": forecast,
+        "retention_trend": retention_trend,
+        "streak_history": streak_history,
+        "weakest_decks": weakest_decks,
+        "difficult_cards": difficult_cards,
     }

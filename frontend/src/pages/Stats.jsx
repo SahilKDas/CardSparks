@@ -124,6 +124,14 @@ function Forecast({ days, backlog }) {
   )
 }
 
+function RetentionTrend({ weeks }) {
+  return <div className="insight-bars" aria-label="Eight-week retention trend">{weeks.map((week) => <div key={week.date} title={`${formatDay(week.date)}: ${week.retention === null ? 'No reviews' : `${Math.round(week.retention * 100)}% retained`}`}><span style={{ height: `${week.retention === null ? 3 : Math.max(8, week.retention * 100)}%` }} /><small>{formatDay(week.date)}</small></div>)}</div>
+}
+
+function StreakHistory({ weeks }) {
+  return <div className="streak-weeks">{weeks.map((week) => <div key={week.date}><span><strong>{week.active_days}</strong>/7 days</span><i><b style={{ width: `${(week.active_days / 7) * 100}%` }} /></i><small>{week.reviews} reviews</small></div>)}</div>
+}
+
 export default function Stats() {
   const [stats, setStats] = useState(null)
   const [status, setStatus] = useState('loading')
@@ -159,7 +167,7 @@ export default function Stats() {
     )
   }
 
-  const { totals, retention, streak, backlog, heatmap, forecast } = stats
+  const { totals, retention, streak, backlog, heatmap, forecast, retention_trend: retentionTrend, streak_history: streakHistory, weakest_decks: weakestDecks, difficult_cards: difficultCards } = stats
   const forecastTotal = forecast.reduce((sum, day) => sum + day.count, 0)
   const percent = (value) => value === null || value === undefined ? '—' : `${Math.round(value * 100)}%`
 
@@ -232,6 +240,16 @@ export default function Stats() {
         </div>
         <Forecast days={forecast} backlog={backlog} />
       </section>
+
+      <div className="insight-grid">
+        <section className="stat-section insight-panel"><div className="stat-section-head"><h2>Retention trend</h2><span>Last 8 weeks</span></div><RetentionTrend weeks={retentionTrend} /></section>
+        <section className="stat-section insight-panel"><div className="stat-section-head"><h2>Streak history</h2><span>Active days by week</span></div><StreakHistory weeks={streakHistory} /></section>
+      </div>
+
+      <div className="insight-grid attention-grid">
+        <section className="stat-section insight-panel"><div className="stat-section-head"><h2>Weakest decks</h2><span>Lowest retention first</span></div><div className="rank-list">{weakestDecks.map((deck) => <Link key={deck.id} to={`/decks/${deck.id}`}><span>{deck.emoji || '📚'}</span><div><strong>{deck.title}</strong><small>{deck.reviews} reviews</small></div><b>{percent(deck.retention)}</b></Link>)}{!weakestDecks.length && <p>No reviewed decks yet.</p>}</div></section>
+        <section className="stat-section insight-panel"><div className="stat-section-head"><h2>Difficult cards</h2><span>Failures and lapses</span></div><div className="rank-list">{difficultCards.slice(0, 5).map((card) => <Link key={card.id} to={`/decks/${card.deck_id}`}><span><Icon name="cards" size={16} /></span><div><strong>{card.front}</strong><small>{card.deck__title}</small></div><b>{card.failed_reviews + card.lapses} misses</b></Link>)}{!difficultCards.length && <p>No difficult cards yet.</p>}</div></section>
+      </div>
     </div>
   )
 }

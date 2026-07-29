@@ -695,6 +695,26 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
 .forecast-bar.is-backlog > span { background: var(--violet); }
 .forecast-bar small { color: var(--subtle); font-size: 8px; text-align: center; height: 10px; }
 .forecast-caption { margin-top: 12px; color: var(--subtle); font-size: 9px; }
+.insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.insight-panel { padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.insight-bars { height: 150px; display: grid; grid-template-columns: repeat(8, 1fr); align-items: end; gap: 7px; }
+.insight-bars > div { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; }
+.insight-bars span { min-height: 3px; background: linear-gradient(var(--green), color-mix(in srgb, var(--green) 55%, var(--surface-soft))); border-radius: 4px 4px 0 0; }
+.insight-bars small { color: var(--subtle); font-size: 7px; text-align: center; }
+.streak-weeks { display: grid; gap: 10px; }
+.streak-weeks > div { display: grid; grid-template-columns: 62px 1fr 58px; align-items: center; gap: 8px; font-size: 8px; }
+.streak-weeks span { color: var(--muted); }.streak-weeks span strong { color: var(--text); }
+.streak-weeks i { height: 7px; display: block; background: var(--surface-soft); border-radius: 99px; overflow: hidden; }
+.streak-weeks b { height: 100%; display: block; background: var(--violet); border-radius: inherit; }
+.streak-weeks small { color: var(--subtle); text-align: right; }
+.attention-grid { margin-top: 0; }
+.rank-list { display: grid; gap: 7px; }
+.rank-list > a { padding: 9px; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; color: var(--text); background: var(--surface-soft); border-radius: 9px; }
+.rank-list > a:hover { background: var(--primary-soft); }
+.rank-list > a > span { width: 28px; height: 28px; display: grid; place-items: center; }
+.rank-list div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rank-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.rank-list small, .rank-list b, .rank-list > p { color: var(--subtle); font-size: 8px; }
 
 /* Public landing */
 .public-auth-actions { display: flex; align-items: center; gap: 14px; }
@@ -826,6 +846,7 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
 }
 
 @media (max-width: 680px) {
+  .insight-grid { grid-template-columns: 1fr; }
   .community-grid { grid-template-columns: 1fr; }
   .shared-hero { padding: 20px; grid-template-columns: 1fr; text-align: center; }
   .shared-hero .detail-emoji { margin: 0 auto; }

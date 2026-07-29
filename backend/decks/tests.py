@@ -387,6 +387,10 @@ class DeckApiTests(APITestCase):
         self.assertEqual(response.data["totals"]["reviews"], 1)
         self.assertEqual(response.data["totals"]["decks"], 1)
         self.assertEqual(len(response.data["heatmap"]), 7)
+        self.assertEqual(len(response.data["retention_trend"]), 8)
+        self.assertEqual(len(response.data["streak_history"]), 8)
+        self.assertEqual(response.data["weakest_decks"][0]["title"], self.deck.title)
+        self.assertEqual(response.data["difficult_cards"][0]["deck__title"], self.deck.title)
 
     def test_deck_string_uses_custom_users_email(self):
         self.assertEqual(str(self.deck), "Biology (learner@example.com)")
