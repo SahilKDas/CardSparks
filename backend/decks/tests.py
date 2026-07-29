@@ -221,6 +221,54 @@ class DeckApiTests(APITestCase):
         self.assertEqual(len(deck_queue.data["cards"]), 3)
         self.assertEqual(deck_queue.data["cards"][0]["id"], reviewed_cards[0].id)
 
+    def test_daily_limits_are_consumed_across_sessions_and_decks(self):
+        other_deck = Deck.objects.create(owner=self.user, title="Earlier session")
+        old_card = Card.objects.create(
+            deck=other_deck,
+            front="Old review",
+            back="Answer",
+            last_reviewed_at=timezone.now(),
+        )
+        introduced_card = Card.objects.create(
+            deck=other_deck,
+            front="Introduced today",
+            back="Answer",
+            last_reviewed_at=timezone.now(),
+        )
+        reviewed_due = Card.objects.create(
+            deck=self.deck,
+            front="Still due",
+            back="Answer",
+            last_reviewed_at=timezone.now() - timedelta(days=2),
+        )
+        prior = Review.objects.create(
+            card=old_card, grade=4, easiness_after=2.5,
+            repetitions_after=1, interval_days_after=1,
+        )
+        Review.objects.filter(pk=prior.pk).update(reviewed_at=timezone.now() - timedelta(days=1))
+        for card in (old_card, introduced_card):
+            Review.objects.create(
+                card=card, grade=4, easiness_after=2.5,
+                repetitions_after=1, interval_days_after=1,
+            )
+        StudySettings.objects.create(user=self.user, max_reviews=1, max_new_cards=1)
+        self.authenticate()
+
+        account_queue = self.client.get(f"/api/decks/{self.deck.id}/study-queue/?limit=100")
+        self.assertEqual(account_queue.data["cards"], [])
+
+        # Deck overrides are deliberately isolated from activity in other
+        # decks, while still becoming consumed by later sessions in this deck.
+        self.client.patch(f"/api/decks/{self.deck.id}/", {
+            "review_limit": 1,
+            "new_card_limit": 1,
+        }, format="json")
+        deck_queue = self.client.get(f"/api/decks/{self.deck.id}/study-queue/?limit=100")
+        self.assertEqual(
+            {card["id"] for card in deck_queue.data["cards"]},
+            {self.card.id, reviewed_due.id},
+        )
+
     def test_study_settings_require_authentication_and_validate_bounds(self):
         self.assertEqual(self.client.get("/api/settings/").status_code, status.HTTP_401_UNAUTHORIZED)
         self.authenticate()

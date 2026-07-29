@@ -70,7 +70,7 @@ export default function Dashboard() {
           <div className="today-metrics" aria-label="Today's study totals">
             <span><strong>{today.reviews}</strong> reviews</span>
             <span><strong>{today.newCards}</strong> new cards</span>
-            <span><strong>{streak ?? 'â€”'}</strong> day streak</span>
+            <span><strong>{streak ?? '—'}</strong> day streak</span>
             <span><strong>{today.estimatedMinutes}</strong> estimated min</span>
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function Dashboard() {
           ) : (
             <span className="today-complete"><Icon name="check" size={18} /> All caught up</span>
           )}
-          {today.perDeck[0] && <small>Starting with {today.perDeck[0].title} Â· {today.perDeck[0].total} cards</small>}
+          {today.perDeck[0] && <small>Starting with {today.perDeck[0].title} · {today.perDeck[0].total} cards</small>}
         </div>
       </section>
 

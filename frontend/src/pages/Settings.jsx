@@ -49,10 +49,10 @@ export default function Settings() {
       <header className="page-head"><span className="eyebrow"><Icon name="clock" size={14} /> Your study rhythm</span><h1>Study settings</h1><p>Choose sensible account defaults. Any deck can override them from its Edit details dialog.</p></header>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
       {form && <form className="settings-card" onSubmit={save}>
-        <label className="field-label">Maximum reviews per session<input type="number" min="1" max="1000" value={form.max_reviews} onChange={(event) => setForm({ ...form, max_reviews: event.target.value })} /><span>Previously studied cards that are ready to review.</span></label>
-        <label className="field-label">Maximum new cards per session<input type="number" min="0" max="200" value={form.max_new_cards} onChange={(event) => setForm({ ...form, max_new_cards: event.target.value })} /><span>Set this to zero when you want to catch up without introducing material.</span></label>
-        <label className="field-label">Grading mode<select value={form.grading_mode} onChange={(event) => setForm({ ...form, grading_mode: event.target.value })}><option value="anki">Four grades Â· Again, Hard, Good, Easy</option><option value="simple">Simple Â· Again or Good</option></select><span>Both modes use the same spaced-repetition scheduler.</span></label>
-        <div className="settings-actions"><span role="status">{saved ? 'Settings saved.' : ''}</span><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Savingâ€¦' : 'Save settings'}</button></div>
+        <label className="field-label">Maximum reviews per day<input type="number" min="1" max="1000" value={form.max_reviews} onChange={(event) => setForm({ ...form, max_reviews: event.target.value })} /><span>Previously studied cards that are ready to review.</span></label>
+        <label className="field-label">Maximum new cards per day<input type="number" min="0" max="200" value={form.max_new_cards} onChange={(event) => setForm({ ...form, max_new_cards: event.target.value })} /><span>Set this to zero when you want to catch up without introducing material.</span></label>
+        <label className="field-label">Grading mode<select value={form.grading_mode} onChange={(event) => setForm({ ...form, grading_mode: event.target.value })}><option value="anki">Four grades · Again, Hard, Good, Easy</option><option value="simple">Simple · Again or Good</option></select><span>Both modes use the same spaced-repetition scheduler.</span></label>
+        <div className="settings-actions"><span role="status">{saved ? 'Settings saved.' : ''}</span><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button></div>
       </form>}
     </div>
   )

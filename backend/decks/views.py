@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import F, Q, Count
+from django.db.models import F, Q, Count, Subquery
 
 from .scheduling import apply_review, PASS_THRESHOLD
 from .models import Deck, Card, Review, StudySettings
@@ -99,14 +99,46 @@ class DeckViewSet(viewsets.ModelViewSet):
         account_settings, _ = StudySettings.objects.get_or_create(user=request.user)
         review_limit = deck.review_limit if deck.review_limit is not None else account_settings.max_reviews
         new_card_limit = deck.new_card_limit if deck.new_card_limit is not None else account_settings.max_new_cards
+        local_now = timezone.localtime(now)
+        day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        def usage_today(deck_specific):
+            # Account defaults are a true daily budget shared across decks.
+            # A per-deck override intentionally gets its own budget. Comparing
+            # each card with reviews before today's local midnight lets us
+            # distinguish a newly introduced card from a normal review without
+            # changing or duplicating immutable Review history.
+            scope = {"card__deck": deck} if deck_specific else {"card__deck__owner": request.user}
+            reviewed_before = Review.objects.filter(
+                **scope,
+                reviewed_at__lt=day_start,
+            ).values("card_id")
+            completed_today = Review.objects.filter(
+                **scope,
+                reviewed_at__gte=day_start,
+            )
+            review_count = completed_today.filter(
+                card_id__in=Subquery(reviewed_before),
+            ).values("card_id").distinct().count()
+            new_count = completed_today.exclude(
+                card_id__in=Subquery(reviewed_before),
+            ).values("card_id").distinct().count()
+            return review_count, new_count
+
+        account_usage = usage_today(False)
+        deck_usage = usage_today(True) if deck.review_limit is not None or deck.new_card_limit is not None else account_usage
+        reviews_used = deck_usage[0] if deck.review_limit is not None else account_usage[0]
+        new_cards_used = deck_usage[1] if deck.new_card_limit is not None else account_usage[1]
+        remaining_reviews = max(0, review_limit - reviews_used)
+        remaining_new_cards = max(0, new_card_limit - new_cards_used)
         due = deck.cards.filter(
             Q(due_at__isnull=True) | Q(due_at__lte=now)
         ).order_by(F('due_at').asc(nulls_first=True), "position")
 
         # last_reviewed_at—not repetitions—distinguishes genuinely new cards.
         # A failed review resets repetitions to zero but must remain a review.
-        reviews = list(due.filter(last_reviewed_at__isnull=False)[:review_limit])
-        new_cards = list(due.filter(last_reviewed_at__isnull=True)[:new_card_limit])
+        reviews = list(due.filter(last_reviewed_at__isnull=False)[:remaining_reviews])
+        new_cards = list(due.filter(last_reviewed_at__isnull=True)[:remaining_new_cards])
         cards = (reviews + new_cards)[:limit]
 
         return Response({"cards": CardSerializer(cards, many=True).data})

@@ -214,7 +214,7 @@ export default function CreateDeck() {
             <label className={`notes-file-drop ${importing ? 'is-loading' : ''}`}>
               <input type="file" accept={NOTES_FILE_ACCEPT} onChange={handleFileImport} disabled={importing || generating} />
               <span className="notes-file-icon"><Icon name="notes" size={21} /></span>
-              <span><strong>{importing ? 'Reading your fileâ€¦' : 'Upload study notes'}</strong><small>PDF, DOCX, TXT, or Markdown Â· up to 10 MB</small></span>
+              <span><strong>{importing ? 'Reading your file…' : 'Upload study notes'}</strong><small>PDF, DOCX, TXT, or Markdown · up to 10 MB</small></span>
               <span className="button button-secondary">Choose file</span>
             </label>
             {importedFile && (
