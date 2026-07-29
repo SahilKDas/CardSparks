@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 from django.utils import timezone
 from .models import Deck, Card
 from .generation import MAX_CARDS, MIN_CARDS, MAX_NOTES_LENGTH, MIN_NOTES_LENGTH
@@ -28,6 +29,7 @@ class DeckSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["last_studied", "created_at", "updated_at"]
 
+    @transaction.atomic
     def create(self, validated_data):
         cards_data = validated_data.pop("cards", [])
         deck = Deck.objects.create(**validated_data)
@@ -63,7 +65,13 @@ class StudyResultSerializer(serializers.Serializer):
 
 
 class StudySessionSerializer(serializers.Serializer):
-    results = StudyResultSerializer(many=True, allow_empty=True)
+    results = StudyResultSerializer(many=True, allow_empty=False)
+
+    def validate_results(self, value):
+        card_ids = [result["cardId"] for result in value]
+        if len(card_ids) != len(set(card_ids)):
+            raise serializers.ValidationError("Each card may only appear once per study session.")
+        return value
 
 class GenerateRequestSerializer(serializers.Serializer):
     """Only accepts a topic or notes"""
@@ -76,8 +84,6 @@ class GenerateRequestSerializer(serializers.Serializer):
         topic = (attrs.get("topic") or "").strip()
         notes = (attrs.get("source_text") or "").strip()
 
-        print(attrs)
-
         if topic and notes:
             raise serializers.ValidationError("Provide either a topic ('topic') or notes ('source_text'), not both.")
 
@@ -87,11 +93,11 @@ class GenerateRequestSerializer(serializers.Serializer):
         if notes:
             if len(notes) > MAX_NOTES_LENGTH:
                 raise serializers.ValidationError({
-                    "source_text": f"Keep your notes under {MAX_NOTES_LENGTH}"
+                    "source_text": f"Keep your notes at or below {MAX_NOTES_LENGTH:,} characters."
                 })
             elif len(notes) < MIN_NOTES_LENGTH:
                 raise serializers.ValidationError({
-                    "source_text": f"Provide more than {MIN_NOTES_LENGTH} characters."
+                    "source_text": f"Provide at least {MIN_NOTES_LENGTH} characters."
                 })
 
         attrs["topic"] = topic

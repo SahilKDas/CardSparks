@@ -29,5 +29,5 @@
 
 ### Backend acceptance checks
 
-- [ ] Cover topic/notes exclusivity, text limits, card-count limits, authentication, ownership, duplicate/foreign cards, grade bounds, provider failures, and response shapes with Django tests.
-- [ ] Confirm the existing topic-generation and study-session contracts remain backward compatible.
+- [x] Cover topic/notes exclusivity, text limits, card-count limits, authentication, ownership, duplicate/foreign cards, grade bounds, provider failures, and response shapes with Django tests.
+- [x] Confirm the existing topic-generation and study-session contracts remain backward compatible.

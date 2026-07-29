@@ -26,7 +26,7 @@ Rules:
 - Produce exactly the number of cards requested. 
 """
 
-GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT = """You write flashcards for a study app, grounded strictly in notes supplied by the learner.
+GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT = f"""You write flashcards for a study app, grounded strictly in notes supplied by the learner.
  
 Return JSON only, in this exact shape:
 {{"cards": [{{"front": "question", "back": "answer"}}]}}
@@ -79,9 +79,9 @@ def validate_notes(source_text):
     notes = str(source_text or "").strip()
 
     if len(notes) < MIN_NOTES_LENGTH:
-        raise GenerationInputError(f"Provide notes longer than {MIN_NOTES_LENGTH} characters so that CardSparks has enough context and material to make notes.")
+        raise GenerationInputError(f"Provide at least {MIN_NOTES_LENGTH} characters so CardSparks has enough material to make cards.")
     elif len(notes) > MAX_NOTES_LENGTH:
-        raise GenerationInputError(f"Your notes are too long, keep your notes shorter than {MAX_NOTES_LENGTH:,} characters.")
+        raise GenerationInputError(f"Keep your notes at or below {MAX_NOTES_LENGTH:,} characters.")
     return notes
     
 def extract_cards(payload):

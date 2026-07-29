@@ -9,12 +9,9 @@ from django.db.models import F, Q, Count
 
 from .scheduling import apply_review, PASS_THRESHOLD
 from .models import Deck, Card, Review
-from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackResultsSerializer, StudyFeedbackSerializer
+from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackSerializer
 from .generation import GenerationError, GenerationInputError, generate_cards, generate_feedback, generate_cards_from_notes
 from .stats import build_stats
-
-MASTERY_ON_PASS = 0.20
-MASTERY_ON_FAIL = -0.12 
 
 FEEDBACK_MAX_LENGTH = 300
 
@@ -129,9 +126,9 @@ class DeckViewSet(viewsets.ModelViewSet):
         try:
             feedback = generate_feedback(summary)
         except GenerationError as err:
-            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
-        except GenerationInputError as err:
             return Response({"detail": str(err)}, status=status.HTTP_502_BAD_GATEWAY)
+        except GenerationInputError as err:
+            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"feedback": feedback[:FEEDBACK_MAX_LENGTH]})
 

@@ -11,7 +11,15 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .generation import GenerationError, generate_cards, generate_feedback
+from .generation import (
+    GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT,
+    NOTES_END,
+    NOTES_START,
+    GenerationError,
+    GenerationInputError,
+    generate_cards,
+    generate_feedback,
+)
 from .models import Card, Deck, Review
 from .scheduling import MASTERY_HORIZON_DAYS, Schedule, derive_mastery
 
@@ -57,6 +65,19 @@ class DeckApiTests(APITestCase):
         created = Deck.objects.get(pk=response.data["id"])
         self.assertEqual(created.owner, self.user)
         self.assertEqual(list(created.cards.values_list("position", flat=True)), [0, 1])
+
+    @patch("decks.serializers.Card.objects.bulk_create", side_effect=IntegrityError("card insert failed"))
+    def test_create_deck_rolls_back_if_cards_cannot_be_created(self, _bulk_create):
+        self.authenticate()
+        initial_count = Deck.objects.count()
+
+        with self.assertRaises(IntegrityError):
+            self.client.post("/api/decks/", {
+                "title": "Should roll back",
+                "cards": [{"front": "Question", "back": "Answer"}],
+            }, format="json")
+
+        self.assertEqual(Deck.objects.count(), initial_count)
 
     def test_study_queue_clamps_invalid_limits_instead_of_crashing(self):
         self.authenticate()
@@ -104,6 +125,155 @@ class DeckApiTests(APITestCase):
         self.assertIsNotNone(self.deck.last_studied)
         self.assertEqual(Review.objects.filter(card=self.card, grade=4).count(), 1)
 
+    def test_generate_preview_requires_authentication(self):
+        response = self.client.post("/api/decks/generate/", {
+            "topic": "Biology",
+            "num_cards": 8,
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_generate_preview_rejects_conflicting_missing_and_out_of_range_input(self):
+        self.authenticate()
+        requests = [
+            {"topic": "Biology", "source_text": "x" * 100},
+            {"num_cards": 8},
+            {"source_text": "x" * 99},
+            {"source_text": "x" * 20001},
+            {"topic": "Biology", "num_cards": 0},
+            {"topic": "Biology", "num_cards": 21},
+        ]
+
+        for payload in requests:
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/decks/generate/", payload, format="json")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("decks.views.generate_cards_from_notes")
+    def test_generate_preview_accepts_inclusive_note_boundaries_and_returns_existing_shape(self, generate_notes):
+        generate_notes.return_value = ([{"front": "Q", "back": "A"}], 1)
+        self.authenticate()
+
+        for notes in ("x" * 100, "x" * 20000):
+            with self.subTest(length=len(notes)):
+                response = self.client.post("/api/decks/generate/", {
+                    "source_text": notes,
+                    "num_cards": 8,
+                }, format="json")
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data, {
+                    "cards": [{"front": "Q", "back": "A"}],
+                    "cards_added": 1,
+                })
+
+        self.assertEqual(generate_notes.call_count, 2)
+
+    @patch("decks.views.generate_cards", return_value=([{"front": "Q", "back": "A"}], 1))
+    def test_topic_generation_remains_backward_compatible(self, generate_topic):
+        self.authenticate()
+
+        response = self.client.post("/api/decks/generate/", {
+            "topic": "Biology",
+            "num_cards": 8,
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["cards_added"], 1)
+        generate_topic.assert_called_once_with("Biology", 8)
+
+    @patch("decks.views.generate_cards", side_effect=GenerationError("provider unavailable"))
+    def test_generate_preview_returns_502_for_provider_failures(self, _generate_topic):
+        self.authenticate()
+
+        response = self.client.post("/api/decks/generate/", {
+            "topic": "Biology",
+            "num_cards": 8,
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+
+    def test_study_feedback_requires_authentication_and_hides_inaccessible_decks(self):
+        inaccessible = Deck.objects.create(owner=self.other, title="Private")
+        unauthenticated = self.client.post(
+            f"/api/decks/{self.deck.id}/study-feedback/",
+            {"results": [{"cardId": self.card.id, "grade": 4}]},
+            format="json",
+        )
+        self.authenticate()
+        inaccessible_response = self.client.post(
+            f"/api/decks/{inaccessible.id}/study-feedback/",
+            {"results": [{"cardId": self.card.id, "grade": 4}]},
+            format="json",
+        )
+
+        self.assertEqual(unauthenticated.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(inaccessible_response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_study_feedback_rejects_empty_duplicate_foreign_and_invalid_results(self):
+        other_deck = Deck.objects.create(owner=self.user, title="Other deck")
+        foreign_card = Card.objects.create(deck=other_deck, front="Other", back="Other")
+        self.authenticate()
+        requests = [
+            {"results": []},
+            {"results": [
+                {"cardId": self.card.id, "grade": 4},
+                {"cardId": self.card.id, "grade": 5},
+            ]},
+            {"results": [{"cardId": foreign_card.id, "grade": 4}]},
+            {"results": [{"cardId": self.card.id, "grade": 6}]},
+        ]
+
+        for payload in requests:
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    f"/api/decks/{self.deck.id}/study-feedback/",
+                    payload,
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("decks.views.generate_feedback", return_value="Review cellular structure before your next session.")
+    def test_study_feedback_returns_feedback_without_changing_study_records(self, _generate_feedback):
+        self.authenticate()
+        original_updated_at = self.deck.updated_at
+
+        response = self.client.post(
+            f"/api/decks/{self.deck.id}/study-feedback/",
+            {"results": [{"cardId": self.card.id, "grade": 2}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"feedback": "Review cellular structure before your next session."})
+        self.assertEqual(Review.objects.count(), 0)
+        self.deck.refresh_from_db()
+        self.card.refresh_from_db()
+        self.assertEqual(self.deck.updated_at, original_updated_at)
+        self.assertIsNone(self.card.last_reviewed_at)
+
+    @patch("decks.views.generate_feedback", side_effect=GenerationError("provider unavailable"))
+    def test_study_feedback_returns_502_for_provider_failures(self, _generate_feedback):
+        self.authenticate()
+        response = self.client.post(
+            f"/api/decks/{self.deck.id}/study-feedback/",
+            {"results": [{"cardId": self.card.id, "grade": 4}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+
+    @patch("decks.views.generate_feedback", side_effect=GenerationInputError("invalid summary"))
+    def test_study_feedback_returns_400_for_generation_input_errors(self, _generate_feedback):
+        self.authenticate()
+        response = self.client.post(
+            f"/api/decks/{self.deck.id}/study-feedback/",
+            {"results": [{"cardId": self.card.id, "grade": 4}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_stats_are_scoped_to_the_authenticated_user(self):
         Review.objects.create(card=self.card, grade=4, easiness_after=2.5, repetitions_after=1, interval_days_after=2)
         other_deck = Deck.objects.create(owner=self.other, title="Other")
@@ -134,6 +304,13 @@ class SchedulingTests(SimpleTestCase):
 
 
 class GenerationTests(SimpleTestCase):
+    def test_notes_prompt_uses_real_markers_and_valid_json_example(self):
+        self.assertIn(NOTES_START, GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT)
+        self.assertIn(NOTES_END, GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT)
+        self.assertNotIn("{NOTES_START}", GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT)
+        self.assertIn('{"cards": [{"front": "question", "back": "answer"}]}', GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT)
+        self.assertNotIn('{{"cards"', GEN_FLASHCARDS_FROM_NOTES_SYSTEM_PROMPT)
+
     @patch("decks.generation.Mistral")
     @patch.dict("os.environ", {"MISTRAL_API_KEY": "test-key"})
     def test_generation_count_matches_truncated_card_list(self, mistral_class):
