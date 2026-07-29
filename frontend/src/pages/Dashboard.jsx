@@ -59,7 +59,7 @@ export default function Dashboard() {
           <h1>Good to see you, <em>{user?.name?.split(' ')[0] || 'learner'}.</em></h1>
           <p>What are we getting curious about today?</p>
         </div>
-        <Link className="button button-primary hero-create" to="/decks/new"><Icon name="plus" size={18} /> Create a deck</Link>
+        <div className="hero-actions"><Link className="button button-secondary" to="/bulk"><Icon name="edit" size={17} /> Bulk editor</Link><Link className="button button-primary hero-create" to="/decks/new"><Icon name="plus" size={18} /> Create a deck</Link></div>
       </section>
 
       <section className="today-panel" aria-labelledby="today-heading">

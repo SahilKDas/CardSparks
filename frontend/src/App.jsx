@@ -12,6 +12,11 @@ import Study from './pages/Study'
 import Community from './pages/Community'
 import SharedDeck from './pages/SharedDeck'
 import Settings from './pages/Settings'
+import WeakPractice from './pages/WeakPractice'
+import Exam from './pages/Exam'
+import QualityCheck from './pages/QualityCheck'
+import BulkEditor from './pages/BulkEditor'
+import TransferCenter from './pages/TransferCenter'
 
 export default function App() {
   return (
@@ -29,6 +34,11 @@ export default function App() {
           <Route path="decks/new" element={<CreateDeck />} />
           <Route path="decks/:deckId" element={<DeckDetail />} />
           <Route path="decks/:deckId/study" element={<Study />} />
+          <Route path="decks/:deckId/exam" element={<Exam />} />
+          <Route path="decks/:deckId/quality" element={<QualityCheck />} />
+          <Route path="practice/weak" element={<WeakPractice />} />
+          <Route path="bulk" element={<BulkEditor />} />
+          <Route path="transfer" element={<TransferCenter />} />
         </Route>
         <Route path="404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />

@@ -153,6 +153,8 @@ export default function DeckDetail() {
         </div>
         <div className="detail-actions">
           {deck.cards.length ? <Link className="button button-primary" to={`/decks/${deck.id}/study`}><Icon name="play" size={17} /> Study deck</Link> : <button className="button button-primary" type="button" disabled><Icon name="play" size={17} /> Add cards to study</button>}
+          {deck.cards.length > 1 && <Link className="button button-secondary" to={`/decks/${deck.id}/exam`}><Icon name="clock" size={16} /> Take a practice test</Link>}
+          {deck.cards.length > 0 && <Link className="button button-secondary" to={`/decks/${deck.id}/quality`}><Icon name="sparkles" size={16} /> Check card quality</Link>}
           <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setSharingOpen(true) }}><Icon name="sparkles" size={16} /> Share deck</button>
           <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setDetails({ title: deck.title, description: deck.description || '', folder: deck.folder || '', tagsText: (deck.tags || []).join(', '), reviewLimit: deck.reviewLimit ?? '', newCardLimit: deck.newCardLimit ?? '', gradingMode: deck.gradingMode || '' }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
           <button className="icon-button destructive-hover" type="button" onClick={handleDeleteDeck} aria-label="Delete deck"><Icon name="trash" size={18} /></button>

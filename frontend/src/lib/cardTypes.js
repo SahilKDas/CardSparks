@@ -17,6 +17,7 @@ export function clozeAnswer(value) {
 /** Validate authoring rules before a request reaches the backend. */
 export function validateCardDraft(card) {
   if (!String(card.front || '').trim() || !String(card.back || '').trim()) return 'Every card needs both a front and back.'
+  if (!CARD_TYPES.some((type) => type.value === (card.cardType || 'basic'))) return 'Choose a supported card type.'
   if (card.cardType === 'cloze' && !/\{\{[^{}]+}}/.test(card.front)) return 'Cloze cards need hidden text wrapped in {{double braces}}.'
   if (card.cardType === 'multiple_choice') {
     const choices = card.choices || []

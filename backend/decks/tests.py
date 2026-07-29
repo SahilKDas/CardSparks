@@ -117,6 +117,47 @@ class DeckApiTests(APITestCase):
         self.assertEqual(nested_deck.status_code, status.HTTP_201_CREATED)
         self.assertEqual(nested_deck.data["cards"][0]["card_type"], "cloze")
 
+    @patch("decks.quality_views.analyze_card_quality")
+    def test_card_quality_check_is_owned_validated_and_returns_issues(self, analyze):
+        analyze.return_value = [{
+            "card_id": self.card.id,
+            "issues": ["The prompt is vague."],
+            "suggested_front": "What is the basic unit of life?",
+            "suggested_back": self.card.back,
+        }]
+        self.authenticate()
+        response = self.client.post(
+            f"/api/decks/{self.deck.id}/quality-check/",
+            {"card_ids": [self.card.id]},
+            format="json",
+        )
+        foreign = self.client.post(
+            f"/api/decks/{self.deck.id}/quality-check/",
+            {"card_ids": [999999]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["issues"][0]["card_id"], self.card.id)
+        self.assertEqual(foreign.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_move_preserves_card_identity_and_review_history(self):
+        target = Deck.objects.create(owner=self.user, title="Target")
+        Review.objects.create(
+            card=self.card, grade=4, easiness_after=2.5,
+            repetitions_after=1, interval_days_after=3,
+        )
+        self.authenticate()
+        response = self.client.post("/api/cards/bulk-move/", {
+            "card_ids": [self.card.id],
+            "target_deck_id": target.id,
+        }, format="json")
+
+        self.card.refresh_from_db()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.card.deck_id, target.id)
+        self.assertEqual(self.card.reviews.count(), 1)
+
     def test_private_decks_are_hidden_and_public_decks_expose_no_owner_email(self):
         private_response = self.client.get(f"/api/shared-decks/{self.deck.share_token}/")
         self.assertEqual(private_response.status_code, status.HTTP_404_NOT_FOUND)

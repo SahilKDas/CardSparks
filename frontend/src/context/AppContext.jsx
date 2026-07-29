@@ -107,6 +107,53 @@ export function AppProvider({ children }) {
   const updateStudySettings = useCallback((updates) => api.updateStudySettings(updates), [])
   const listCommunityDecks = useCallback(() => api.listCommunityDecks(), [])
   const getSharedDeck = useCallback((token) => api.getSharedDeck(token), [])
+  const recordCrossDeckStudy = useCallback(async (results) => {
+    setError('')
+    const grouped = new Map()
+    results.forEach((result) => {
+      const deckResults = grouped.get(String(result.deckId)) || []
+      deckResults.push({ cardId: result.cardId, grade: result.grade })
+      grouped.set(String(result.deckId), deckResults)
+    })
+    try {
+      // Existing study-session endpoints remain the source of truth. Grouping
+      // client-side gives cross-deck practice atomicity per deck without adding
+      // a competing backend contract while another teammate is editing APIs.
+      const completedDeckIds = []
+      for (const [deckId, deckResults] of grouped) {
+        try {
+          await api.recordStudy(deckId, deckResults)
+          completedDeckIds.push(deckId)
+        } catch (requestError) {
+          // The UI uses this progress marker to retry only unsaved decks. This
+          // prevents a partial network failure from scheduling successful
+          // groups twice on retry.
+          requestError.completedDeckIds = completedDeckIds
+          throw requestError
+        }
+      }
+      const latest = await api.listDecks()
+      setDecks(latest)
+      return completedDeckIds
+    } catch (requestError) {
+      if (requestError.status === 401) clearSession()
+      else setError(requestError.message)
+      throw requestError
+    }
+  }, [clearSession])
+  const runBatch = useCallback(async (operations) => {
+    setError('')
+    try {
+      // Execute in order so move operations can copy before deleting. A single
+      // refresh afterward avoids one full deck reload per selected card.
+      for (const operation of operations) await operation(api)
+      setDecks(await api.listDecks())
+    } catch (requestError) {
+      if (requestError.status === 401) clearSession()
+      else setError(requestError.message)
+      throw requestError
+    }
+  }, [clearSession])
 
   const value = useMemo(() => ({
     decks,
@@ -125,7 +172,13 @@ export function AppProvider({ children }) {
     generateIntoDeck: (deckId, topic, number) => runMutation(() => api.generateIntoDeck(deckId, topic, number)),
     getStudyQueue,
     recordStudy: (deckId, results) => runMutation(() => api.recordStudy(deckId, results)),
+    recordCrossDeckStudy,
+    bulkDeleteCards: (cardIds) => runBatch(cardIds.map((cardId) => (client) => client.deleteCard(cardId))),
+    bulkUpdateCards: (updates) => runBatch(updates.map(({ cardId, card }) => (client) => client.updateCard(cardId, card))),
+    bulkMoveCards: (cards, targetDeckId) => runBatch([(client) => client.bulkMoveCards(cards, targetDeckId)]),
+    bulkUpdateDecks: (updates) => runBatch(updates.map(({ deckId, changes }) => (client) => client.updateDeck(deckId, changes))),
     getStudyFeedback: (deckId, results) => api.getStudyFeedback(deckId, results),
+    checkCardQuality: (deckId, cardIds) => api.checkCardQuality(deckId, cardIds),
     getStudySettings,
     updateStudySettings,
     setDeckSharing: (deckId, isPublic) => runMutation(() => api.setDeckSharing(deckId, isPublic)),
@@ -149,7 +202,7 @@ export function AppProvider({ children }) {
       clearSession()
     },
     isMockMode: USE_MOCK_API,
-  }), [decks, loading, error, refreshDecks, runMutation, getStudyQueue, getStudySettings, updateStudySettings, listCommunityDecks, getSharedDeck, theme, user, isAuthenticated, clearSession])
+  }), [decks, loading, error, refreshDecks, runMutation, runBatch, getStudyQueue, getStudySettings, updateStudySettings, listCommunityDecks, getSharedDeck, recordCrossDeckStudy, theme, user, isAuthenticated, clearSession])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

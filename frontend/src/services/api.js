@@ -11,6 +11,7 @@ import {
   sm2,
 } from '../lib/sm2'
 import { buildMockCardsFromNotes, buildMockStudyFeedback } from '../lib/studyFeatures'
+import { analyzeCardQuality } from '../lib/cardQuality'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
@@ -138,7 +139,10 @@ function normalizeDeck(deck) {
 
 export async function request(path, options = {}) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 8500)
+  // Backend AI calls allow nine seconds at the provider boundary. A slightly
+  // larger client timeout lets the API return its useful 502 message instead
+  // of racing the browser's generic abort error.
+  const timer = setTimeout(() => controller.abort(), 12000)
   const token = localStorage.getItem(TOKEN_KEY)
   const { skipAuth = false, ...fetchOptions } = options
 
@@ -276,6 +280,19 @@ const mockApi = {
     writeDecks(decks)
     return changedDeck
   },
+  async bulkMoveCards(cards, targetDeckId) {
+    await wait(280)
+    const target = readDecks().find((deck) => String(deck.id) === String(targetDeckId))
+    if (!target) throw new Error('Choose a valid destination deck.')
+    const movingIds = new Set(cards.map((card) => String(card.id)))
+    let position = target.cards.reduce((max, card) => Math.max(max, card.position || 0), -1) + 1
+    const moved = cards.map((card) => normalizeCard({ ...card, position: position++ }))
+    writeDecks(readDecks().map((deck) => {
+      const remaining = deck.cards.filter((card) => !movingIds.has(String(card.id)))
+      return normalizeDeck({ ...deck, cards: String(deck.id) === String(targetDeckId) ? [...remaining, ...moved] : remaining })
+    }))
+    return { moved: moved.length }
+  },
   generateCards: mockGenerate,
   async generateCardsFromNotes(sourceText, number) {
     await wait(700)
@@ -335,6 +352,12 @@ const mockApi = {
     await wait(520)
     const deck = await this.getDeck(deckId)
     return buildMockStudyFeedback(results, deck.cards)
+  },
+  async checkCardQuality(deckId, cardIds = []) {
+    await wait(650)
+    const deck = await this.getDeck(deckId)
+    const selected = cardIds.length ? deck.cards.filter((card) => cardIds.includes(String(card.id))) : deck.cards
+    return analyzeCardQuality(selected)
   },
   async getStudySettings() {
     await wait(120)
@@ -428,6 +451,12 @@ const realApi = {
   async deleteCard(cardId) {
     return request(`/api/cards/${cardId}/`, { method: 'DELETE' })
   },
+  async bulkMoveCards(cards, targetDeckId) {
+    return request('/api/cards/bulk-move/', {
+      method: 'POST',
+      body: JSON.stringify({ card_ids: cards.map((card) => card.id), target_deck_id: targetDeckId }),
+    })
+  },
   async generateCards(topic, number) {
     const payload = await request('/api/decks/generate/', {
       method: 'POST',
@@ -471,6 +500,18 @@ const realApi = {
     const feedback = String(payload?.feedback || '').trim()
     if (!feedback) throw new Error('The study coach returned no feedback. Please try again.')
     return feedback.slice(0, 300)
+  },
+  async checkCardQuality(deckId, cardIds = []) {
+    const payload = await request(`/api/decks/${deckId}/quality-check/`, {
+      method: 'POST',
+      body: JSON.stringify({ card_ids: cardIds }),
+    })
+    return (payload.issues || []).map((issue) => ({
+      cardId: String(issue.card_id),
+      issues: Array.isArray(issue.issues) ? issue.issues.map(String) : [],
+      suggestedFront: String(issue.suggested_front || ''),
+      suggestedBack: String(issue.suggested_back || ''),
+    }))
   },
   async getStudySettings() {
     return request('/api/settings/')

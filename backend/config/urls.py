@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from decks.views import CardViewSet, CommunityDeckList, DeckViewSet, DuplicateSharedDeck, SharedDeckDetail, StatsView, StudySettingsView
+from decks.quality_views import CardQualityView
+from decks.bulk_views import BulkMoveCardsView
 
 router = DefaultRouter()
 router.register(r"decks", DeckViewSet, basename="deck")
@@ -28,6 +30,8 @@ urlpatterns = [
     path("api/auth/", include("accounts.urls")),
     path("api/stats/", StatsView.as_view(), name="stats"),
     path("api/settings/", StudySettingsView.as_view(), name="study-settings"),
+    path("api/decks/<int:pk>/quality-check/", CardQualityView.as_view(), name="card-quality"),
+    path("api/cards/bulk-move/", BulkMoveCardsView.as_view(), name="bulk-move-cards"),
     path("api/community/", CommunityDeckList.as_view(), name="community-decks"),
     path("api/shared-decks/<uuid:token>/", SharedDeckDetail.as_view(), name="shared-deck"),
     path("api/shared-decks/<uuid:token>/duplicate/", DuplicateSharedDeck.as_view(), name="duplicate-shared-deck"),

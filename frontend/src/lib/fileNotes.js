@@ -1,4 +1,5 @@
-export const NOTES_FILE_ACCEPT = '.txt,.md,.pdf,.docx'
+export const NOTES_FILE_ACCEPT = '.txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp'
+export const IMAGE_NOTES_ACCEPT = 'image/png,image/jpeg,image/webp'
 export const MAX_NOTES_FILE_BYTES = 10 * 1024 * 1024
 
 function extensionOf(name = '') {
@@ -49,11 +50,29 @@ async function extractDocx(arrayBuffer) {
   return result.value
 }
 
+async function extractImage(file, onProgress) {
+  // Tesseract and its language worker are lazy-loaded because OCR is much
+  // larger than the ordinary authoring experience. Recognition happens in the
+  // browser; the original photo is never uploaded by CardSparks.
+  const { createWorker } = await import('tesseract.js')
+  const worker = await createWorker('eng', undefined, {
+    logger: (message) => {
+      if (message.status === 'recognizing text') onProgress?.(Math.round((message.progress || 0) * 100))
+    },
+  })
+  try {
+    const result = await worker.recognize(file)
+    return result.data.text
+  } finally {
+    await worker.terminate()
+  }
+}
+
 /**
  * Extract notes entirely in the browser. The caller receives a truncation flag
  * rather than silently exceeding the generation API's 20,000-character limit.
  */
-export async function extractNotesFile(file, maxCharacters = 20000) {
+export async function extractNotesFile(file, maxCharacters = 20000, onProgress) {
   if (!file) throw new Error('Choose a study-notes file first.')
   if (file.size > MAX_NOTES_FILE_BYTES) throw new Error('Choose a file smaller than 10 MB.')
 
@@ -65,8 +84,10 @@ export async function extractNotesFile(file, maxCharacters = 20000) {
     source = await extractPdf(await file.arrayBuffer())
   } else if (extension === '.docx') {
     source = await extractDocx(await file.arrayBuffer())
+  } else if (['.png', '.jpg', '.jpeg', '.webp'].includes(extension)) {
+    source = await extractImage(file, onProgress)
   } else {
-    throw new Error('CardSparks supports PDF, DOCX, TXT, and Markdown files.')
+    throw new Error('CardSparks supports PDF, DOCX, TXT, and Markdown files, plus PNG, JPG, and WebP images.')
   }
 
   const normalized = normalizeExtractedText(source)

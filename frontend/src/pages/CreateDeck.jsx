@@ -9,7 +9,7 @@ import {
   deriveNotesTitle,
   validateStudyNotes,
 } from '../lib/studyFeatures'
-import { extractNotesFile, NOTES_FILE_ACCEPT } from '../lib/fileNotes'
+import { extractNotesFile, IMAGE_NOTES_ACCEPT, NOTES_FILE_ACCEPT } from '../lib/fileNotes'
 import { parseTags } from '../lib/organize'
 import { validateCardDraft } from '../lib/cardTypes'
 
@@ -34,6 +34,7 @@ export default function CreateDeck() {
   const [generating, setGenerating] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importedFile, setImportedFile] = useState(null)
+  const [ocrProgress, setOcrProgress] = useState(0)
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState('')
 
@@ -100,12 +101,13 @@ export default function CreateDeck() {
     if (!file) return
 
     setImporting(true)
+    setOcrProgress(0)
     setLocalError('')
     try {
       // Parsing stays local. We only place the extracted text into the same
       // editable notes state used by paste mode, preserving one validation and
       // generation path for every supported source format.
-      const result = await extractNotesFile(file, MAX_NOTES_LENGTH)
+      const result = await extractNotesFile(file, MAX_NOTES_LENGTH, setOcrProgress)
       setNotes(result.text)
       setImportedFile({ name: file.name, truncated: result.truncated })
     } catch (error) {
@@ -113,6 +115,7 @@ export default function CreateDeck() {
       setLocalError(error.message)
     } finally {
       setImporting(false)
+      setOcrProgress(0)
       // Allow selecting the same file again after it has been edited externally.
       event.target.value = ''
     }
@@ -210,13 +213,14 @@ export default function CreateDeck() {
 
         {showingGenerator && mode === 'notes' && (
           <section className="creation-panel ai-generator-panel notes-generator-panel">
-            <div className="panel-heading"><span className="big-panel-icon"><Icon name="notes" size={25} /></span><div><h2>Add the material you need to remember</h2><p>Paste notes or extract them from a PDF, DOCX, TXT, or Markdown file.</p></div></div>
+            <div className="panel-heading"><span className="big-panel-icon"><Icon name="notes" size={25} /></span><div><h2>Add the material you need to remember</h2><p>Paste notes, import a document, or scan a worksheet with your camera.</p></div></div>
             <label className={`notes-file-drop ${importing ? 'is-loading' : ''}`}>
               <input type="file" accept={NOTES_FILE_ACCEPT} onChange={handleFileImport} disabled={importing || generating} />
               <span className="notes-file-icon"><Icon name="notes" size={21} /></span>
-              <span><strong>{importing ? 'Reading your file…' : 'Upload study notes'}</strong><small>PDF, DOCX, TXT, or Markdown · up to 10 MB</small></span>
+              <span><strong>{importing ? (ocrProgress ? `Reading image… ${ocrProgress}%` : 'Reading your file…') : 'Upload study notes or a photo'}</strong><small>PDF, DOCX, TXT, Markdown, PNG, JPG, or WebP · up to 10 MB</small></span>
               <span className="button button-secondary">Choose file</span>
             </label>
+            <label className="camera-notes-button"><input type="file" accept={IMAGE_NOTES_ACCEPT} capture="environment" onChange={handleFileImport} disabled={importing || generating} /><Icon name="sparkles" size={17} /><span><strong>Scan with camera</strong><small>Best with bright, straight, high-contrast pages</small></span></label>
             {importedFile && (
               <p className={`file-import-status ${importedFile.truncated ? 'is-warning' : ''}`} role="status">
                 <Icon name={importedFile.truncated ? 'clock' : 'check'} size={14} />
@@ -228,7 +232,7 @@ export default function CreateDeck() {
               <span className="field-label-row"><strong>Study notes</strong><span className={notes.length > MAX_NOTES_LENGTH ? 'over-limit' : ''}>{notes.length.toLocaleString()} / {MAX_NOTES_LENGTH.toLocaleString()}</span></span>
               <textarea id="study-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Paste lecture notes, a reading summary, or your study guide here…" rows="12" maxLength={MAX_NOTES_LENGTH} aria-describedby="study-notes-help" />
             </label>
-            <p id="study-notes-help" className="notes-privacy"><Icon name="check" size={14} /> Files are extracted in your browser. Source text is used for this preview and is not saved with the deck.</p>
+            <p id="study-notes-help" className="notes-privacy"><Icon name="check" size={14} /> Files and photos are read in your browser. Review OCR text carefully—handwriting accuracy varies. Source text is not saved with the deck.</p>
             <GenerationControls mode={mode} count={generationCounts[mode]} setCounts={setGenerationCounts} generating={generating} onGenerate={handleGenerate} />
           </section>
         )}
