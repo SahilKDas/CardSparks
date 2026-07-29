@@ -9,6 +9,7 @@ import {
   deriveNotesTitle,
   validateStudyNotes,
 } from '../lib/studyFeatures'
+import { extractNotesFile, NOTES_FILE_ACCEPT } from '../lib/fileNotes'
 
 const colorOptions = ['coral', 'violet', 'blue', 'green', 'yellow']
 
@@ -29,6 +30,8 @@ export default function CreateDeck() {
   const [notes, setNotes] = useState('')
   const [generationCounts, setGenerationCounts] = useState({ ai: 8, notes: 8 })
   const [generating, setGenerating] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importedFile, setImportedFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [localError, setLocalError] = useState('')
 
@@ -90,6 +93,29 @@ export default function CreateDeck() {
     }
   }
 
+  async function handleFileImport(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setImporting(true)
+    setLocalError('')
+    try {
+      // Parsing stays local. We only place the extracted text into the same
+      // editable notes state used by paste mode, preserving one validation and
+      // generation path for every supported source format.
+      const result = await extractNotesFile(file, MAX_NOTES_LENGTH)
+      setNotes(result.text)
+      setImportedFile({ name: file.name, truncated: result.truncated })
+    } catch (error) {
+      setImportedFile(null)
+      setLocalError(error.message)
+    } finally {
+      setImporting(false)
+      // Allow selecting the same file again after it has been edited externally.
+      event.target.value = ''
+    }
+  }
+
   function updateCard(index, card) {
     updateDraft(mode, (current) => ({
       ...current,
@@ -143,7 +169,7 @@ export default function CreateDeck() {
 
   const generatedMode = mode === 'ai' || mode === 'notes'
   const showingGenerator = generatedMode && draft.cards.length === 0
-  const switchingDisabled = generating || saving
+  const switchingDisabled = generating || saving || importing
 
   return (
     <div className="page create-page">
@@ -151,12 +177,12 @@ export default function CreateDeck() {
       <header className="create-header">
         <span className="eyebrow"><Icon name="sparkles" size={14} /> Make something memorable</span>
         <h1>Create a new deck</h1>
-        <p>Start with a topic, paste your study notes, or build every card yourself.</p>
+        <p>Start with a topic, import your study notes, or build every card yourself.</p>
       </header>
 
       <div className="mode-switch" role="tablist" aria-label="Creation method">
         <button id="mode-ai" className={mode === 'ai' ? 'active' : ''} type="button" onClick={() => switchMode('ai')} role="tab" aria-selected={mode === 'ai'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="wand" /></span><div><strong>Generate with AI</strong><small>From a topic or prompt</small></div>{mode === 'ai' && <Icon name="check" size={17} />}</button>
-        <button id="mode-notes" className={mode === 'notes' ? 'active' : ''} type="button" onClick={() => switchMode('notes')} role="tab" aria-selected={mode === 'notes'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="notes" /></span><div><strong>Paste study notes</strong><small>Ground cards in your material</small></div>{mode === 'notes' && <Icon name="check" size={17} />}</button>
+        <button id="mode-notes" className={mode === 'notes' ? 'active' : ''} type="button" onClick={() => switchMode('notes')} role="tab" aria-selected={mode === 'notes'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="notes" /></span><div><strong>Import study notes</strong><small>Paste or upload your material</small></div>{mode === 'notes' && <Icon name="check" size={17} />}</button>
         <button id="mode-manual" className={mode === 'manual' ? 'active' : ''} type="button" onClick={() => switchMode('manual')} role="tab" aria-selected={mode === 'manual'} aria-controls="creation-content" disabled={switchingDisabled}><span><Icon name="manual" /></span><div><strong>Build it myself</strong><small>Add your own cards</small></div>{mode === 'manual' && <Icon name="check" size={17} />}</button>
       </div>
 
@@ -175,12 +201,25 @@ export default function CreateDeck() {
 
         {showingGenerator && mode === 'notes' && (
           <section className="creation-panel ai-generator-panel notes-generator-panel">
-            <div className="panel-heading"><span className="big-panel-icon"><Icon name="notes" size={25} /></span><div><h2>Paste the material you need to remember</h2><p>CardSparks will turn the ideas in your notes into an editable first draft.</p></div></div>
+            <div className="panel-heading"><span className="big-panel-icon"><Icon name="notes" size={25} /></span><div><h2>Add the material you need to remember</h2><p>Paste notes or extract them from a PDF, DOCX, TXT, or Markdown file.</p></div></div>
+            <label className={`notes-file-drop ${importing ? 'is-loading' : ''}`}>
+              <input type="file" accept={NOTES_FILE_ACCEPT} onChange={handleFileImport} disabled={importing || generating} />
+              <span className="notes-file-icon"><Icon name="notes" size={21} /></span>
+              <span><strong>{importing ? 'Reading your fileâ€¦' : 'Upload study notes'}</strong><small>PDF, DOCX, TXT, or Markdown Â· up to 10 MB</small></span>
+              <span className="button button-secondary">Choose file</span>
+            </label>
+            {importedFile && (
+              <p className={`file-import-status ${importedFile.truncated ? 'is-warning' : ''}`} role="status">
+                <Icon name={importedFile.truncated ? 'clock' : 'check'} size={14} />
+                {importedFile.name} imported{importedFile.truncated ? `; only the first ${MAX_NOTES_LENGTH.toLocaleString()} characters were kept.` : '.'}
+              </p>
+            )}
+            <div className="notes-divider"><span>or paste notes</span></div>
             <label className="field-label" htmlFor="study-notes">
               <span className="field-label-row"><strong>Study notes</strong><span className={notes.length > MAX_NOTES_LENGTH ? 'over-limit' : ''}>{notes.length.toLocaleString()} / {MAX_NOTES_LENGTH.toLocaleString()}</span></span>
               <textarea id="study-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Paste lecture notes, a reading summary, or your study guide here…" rows="12" maxLength={MAX_NOTES_LENGTH} aria-describedby="study-notes-help" />
             </label>
-            <p id="study-notes-help" className="notes-privacy"><Icon name="check" size={14} /> Your pasted source is used for this preview and is not saved with the deck.</p>
+            <p id="study-notes-help" className="notes-privacy"><Icon name="check" size={14} /> Files are extracted in your browser. Source text is used for this preview and is not saved with the deck.</p>
             <GenerationControls mode={mode} count={generationCounts[mode]} setCounts={setGenerationCounts} generating={generating} onGenerate={handleGenerate} />
           </section>
         )}

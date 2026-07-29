@@ -237,6 +237,19 @@ h1, h2, h3, p { margin-top: 0; }
 .field-label-row > span.over-limit { color: var(--red); }
 .notes-privacy { margin: 10px 0 0; display: flex; align-items: center; gap: 6px; color: var(--subtle); font-size: 9px; }
 .notes-privacy svg { color: var(--green); flex: 0 0 auto; }
+.notes-file-drop { margin-bottom: 16px; padding: 14px; display: flex; align-items: center; gap: 12px; background: var(--surface-soft); border: 1px dashed var(--border-strong); border-radius: 12px; cursor: pointer; transition: .15s ease; }
+.notes-file-drop:hover { border-color: var(--primary); background: var(--primary-soft); }
+.notes-file-drop.is-loading { opacity: .68; cursor: wait; }
+.notes-file-drop > input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.notes-file-icon { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; color: var(--primary); background: var(--surface); border-radius: 11px; }
+.notes-file-drop > span:nth-of-type(2) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.notes-file-drop strong { font-size: 11px; }
+.notes-file-drop small { color: var(--subtle); font-size: 8px; }
+.notes-file-drop .button { min-height: 34px; padding: 0 12px; pointer-events: none; }
+.file-import-status { margin: -7px 0 14px; display: flex; align-items: center; gap: 6px; color: var(--green); font-size: 9px; }
+.file-import-status.is-warning { color: #a47418; }
+.notes-divider { margin: 6px 0 14px; display: flex; align-items: center; gap: 10px; color: var(--subtle); font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.notes-divider::before, .notes-divider::after { content: ''; height: 1px; flex: 1; background: var(--border); }
 .deck-builder { display: flex; flex-direction: column; gap: 24px; }
 .compact-heading { margin-bottom: 20px; }
 .deck-details-grid { display: grid; grid-template-columns: 78px 1fr 180px; gap: 16px; align-items: end; }
@@ -812,5 +825,7 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
   .today-action { min-width: 0; }
   .today-metrics { display: grid; grid-template-columns: 1fr 1fr; }
   .today-metrics span { text-align: center; }
+  .notes-file-drop { align-items: flex-start; flex-wrap: wrap; }
+  .notes-file-drop .button { width: 100%; }
   .authenticated .mobile-nav { grid-template-columns: repeat(4, 1fr); }
 }
