@@ -102,6 +102,9 @@ function normalizeDeck(deck) {
     description: String(deck.description || ''),
     folder: String(deck.folder || ''),
     tags: Array.isArray(deck.tags) ? deck.tags.map(String).filter(Boolean).slice(0, 10) : [],
+    isPublic: Boolean(deck.isPublic ?? deck.is_public),
+    shareToken: String(deck.shareToken || deck.share_token || ''),
+    author: String(deck.author || ''),
     lastStudied: deck.lastStudied || deck.last_studied || null,
     createdAt: deck.createdAt || deck.created_at,
     updatedAt: deck.updatedAt || deck.updated_at,
@@ -302,6 +305,41 @@ const mockApi = {
     const deck = await this.getDeck(deckId)
     return buildMockStudyFeedback(results, deck.cards)
   },
+  async setDeckSharing(deckId, isPublic) {
+    const deck = await this.getDeck(deckId)
+    return this.updateDeck(deckId, {
+      isPublic,
+      shareToken: deck.shareToken || uid('shared'),
+    })
+  },
+  async listCommunityDecks() {
+    await wait(220)
+    const learnerDecks = readDecks().filter((deck) => deck.isPublic).map(normalizeDeck)
+    const curated = demoDecks.map((deck) => normalizeDeck({
+      ...deck,
+      shareToken: `community-${deck.id}`,
+      isPublic: true,
+      author: 'CardSparks',
+    }))
+    return [...learnerDecks, ...curated]
+  },
+  async getSharedDeck(token) {
+    const decks = await this.listCommunityDecks()
+    const deck = decks.find((item) => item.shareToken === String(token))
+    if (!deck) throw new Error('That shared deck is private or no longer available.')
+    return deck
+  },
+  async duplicateSharedDeck(token) {
+    const source = await this.getSharedDeck(token)
+    return this.createDeck({
+      ...source,
+      id: undefined,
+      title: `${source.title} (Copy)`,
+      isPublic: false,
+      shareToken: '',
+      cards: source.cards.map(({ front, back }) => ({ front, back })),
+    })
+  },
   async authenticate(mode, credentials) {
     await wait(500)
     if (!credentials.email || !credentials.password) throw new Error('Email and password are required.')
@@ -385,6 +423,25 @@ const realApi = {
     const feedback = String(payload?.feedback || '').trim()
     if (!feedback) throw new Error('The study coach returned no feedback. Please try again.')
     return feedback.slice(0, 300)
+  },
+  async setDeckSharing(deckId, isPublic) {
+    return normalizeDeck(await request(`/api/decks/${deckId}/sharing/`, {
+      method: 'POST',
+      body: JSON.stringify({ is_public: isPublic }),
+    }))
+  },
+  async listCommunityDecks() {
+    const payload = await request('/api/community/', { skipAuth: true })
+    return (Array.isArray(payload) ? payload : []).map(normalizeDeck)
+  },
+  async getSharedDeck(token) {
+    return normalizeDeck(await request(`/api/shared-decks/${token}/`, { skipAuth: true }))
+  },
+  async duplicateSharedDeck(token) {
+    return normalizeDeck(await request(`/api/shared-decks/${token}/duplicate/`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }))
   },
   async authenticate(mode, credentials) {
     localStorage.removeItem(TOKEN_KEY)

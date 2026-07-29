@@ -10,12 +10,14 @@ import { parseTags } from '../lib/organize'
 export default function DeckDetail() {
   const { deckId } = useParams()
   const navigate = useNavigate()
-  const { decks, loading, error, setError, updateDeck, deleteDeck, addCard, updateCard, deleteCard, generateIntoDeck } = useApp()
+  const { decks, loading, error, setError, updateDeck, deleteDeck, addCard, updateCard, deleteCard, generateIntoDeck, setDeckSharing } = useApp()
   const deck = useMemo(() => decks.find((item) => String(item.id) === String(deckId)), [decks, deckId])
   const [editingCard, setEditingCard] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
+  const [sharingOpen, setSharingOpen] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [draft, setDraft] = useState({ front: '', back: '' })
   const [details, setDetails] = useState({ title: '', description: '', folder: '', tagsText: '' })
   const [aiPrompt, setAiPrompt] = useState('')
@@ -99,6 +101,31 @@ export default function DeckDetail() {
     }
   }
 
+  async function toggleSharing() {
+    setBusy(true)
+    setLocalError('')
+    try {
+      await setDeckSharing(deck.id, !deck.isPublic)
+      setCopiedLink(false)
+    } catch (requestError) {
+      setLocalError(requestError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function copyShareLink() {
+    const url = `${window.location.origin}/shared/${deck.shareToken}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedLink(true)
+    } catch {
+      // Clipboard access can be denied on non-HTTPS development origins. The
+      // visible read-only field still lets the learner copy the URL manually.
+      setCopiedLink(false)
+    }
+  }
+
   return (
     <div className="page detail-page">
       <div className="page-breadcrumb"><Link to="/decks"><Icon name="arrowLeft" size={16} /> My decks</Link></div>
@@ -115,6 +142,7 @@ export default function DeckDetail() {
         </div>
         <div className="detail-actions">
           {deck.cards.length ? <Link className="button button-primary" to={`/decks/${deck.id}/study`}><Icon name="play" size={17} /> Study deck</Link> : <button className="button button-primary" type="button" disabled><Icon name="play" size={17} /> Add cards to study</button>}
+          <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setSharingOpen(true) }}><Icon name="sparkles" size={16} /> Share deck</button>
           <button className="button button-secondary" type="button" onClick={() => { setLocalError(''); setDetails({ title: deck.title, description: deck.description || '', folder: deck.folder || '', tagsText: (deck.tags || []).join(', ') }); setEditingDetails(true) }}><Icon name="edit" size={16} /> Edit details</button>
           <button className="icon-button destructive-hover" type="button" onClick={handleDeleteDeck} aria-label="Delete deck"><Icon name="trash" size={18} /></button>
         </div>
@@ -151,6 +179,15 @@ export default function DeckDetail() {
       {editingDetails && <Modal title="Edit deck details" onClose={() => { setEditingDetails(false); setLocalError('') }}>
         <div className="modal-body form-stack"><label className="field-label">Deck name<input value={details.title} onChange={(event) => setDetails({ ...details, title: event.target.value })} maxLength="256" autoFocus data-autofocus /></label><label className="field-label">Description<textarea rows="3" value={details.description} onChange={(event) => setDetails({ ...details, description: event.target.value })} /></label><label className="field-label">Folder<input value={details.folder} onChange={(event) => setDetails({ ...details, folder: event.target.value })} maxLength="80" placeholder="e.g. Semester 1" /></label><label className="field-label">Tags<input value={details.tagsText} onChange={(event) => setDetails({ ...details, tagsText: event.target.value })} placeholder="biology, midterm" /></label>{localError && <p className="field-error">{localError}</p>}</div>
         <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => { setEditingDetails(false); setLocalError('') }}>Cancel</button><button className="button button-primary" type="button" onClick={saveDetails} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button></div>
+      </Modal>}
+
+      {sharingOpen && <Modal title="Share this deck" onClose={() => { setSharingOpen(false); setCopiedLink(false); setLocalError('') }}>
+        <div className="modal-body form-stack">
+          <div className="modal-callout"><Icon name="sparkles" /><p>{deck.isPublic ? 'Anyone with the link can preview this deck and make their own copy. Your account details and review history stay private.' : 'Publishing creates a read-only preview. Your account details, progress, and review history are never included.'}</p></div>
+          {deck.isPublic && <label className="field-label">Public link<div className="share-link-row"><input value={`${window.location.origin}/shared/${deck.shareToken}`} readOnly /><button className="button button-secondary" type="button" onClick={copyShareLink}>{copiedLink ? 'Copied!' : 'Copy'}</button></div></label>}
+          {localError && <p className="field-error">{localError}</p>}
+        </div>
+        <div className="modal-footer"><button className="button button-ghost" type="button" onClick={() => setSharingOpen(false)}>Close</button><button className={`button ${deck.isPublic ? 'button-secondary' : 'button-primary'}`} type="button" onClick={toggleSharing} disabled={busy}>{busy ? 'Saving…' : deck.isPublic ? 'Make private' : 'Publish deck'}</button></div>
       </Modal>}
     </div>
   )

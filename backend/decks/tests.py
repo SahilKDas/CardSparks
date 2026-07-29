@@ -82,6 +82,46 @@ class DeckApiTests(APITestCase):
         }, format="json")
         self.assertEqual(too_many.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_private_decks_are_hidden_and_public_decks_expose_no_owner_email(self):
+        private_response = self.client.get(f"/api/shared-decks/{self.deck.share_token}/")
+        self.assertEqual(private_response.status_code, status.HTTP_404_NOT_FOUND)
+
+        self.deck.is_public = True
+        self.deck.save(update_fields=["is_public"])
+        public_response = self.client.get(f"/api/shared-decks/{self.deck.share_token}/")
+
+        self.assertEqual(public_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(public_response.data["author"], self.user.name)
+        self.assertNotIn("owner", public_response.data)
+        self.assertNotIn(self.user.email, str(public_response.data))
+
+    def test_owner_can_publish_and_public_deck_can_be_duplicated_independently(self):
+        self.authenticate()
+        publish = self.client.post(
+            f"/api/decks/{self.deck.id}/sharing/",
+            {"is_public": True},
+            format="json",
+        )
+        duplicate = self.client.post(f"/api/shared-decks/{self.deck.share_token}/duplicate/", {}, format="json")
+
+        self.assertEqual(publish.status_code, status.HTTP_200_OK)
+        self.assertTrue(publish.data["is_public"])
+        self.assertEqual(duplicate.status_code, status.HTTP_201_CREATED)
+        copied = Deck.objects.get(pk=duplicate.data["id"])
+        self.assertEqual(copied.owner, self.user)
+        self.assertFalse(copied.is_public)
+        self.assertNotEqual(copied.share_token, self.deck.share_token)
+        self.assertEqual(copied.cards.count(), self.deck.cards.count())
+
+    def test_community_lists_only_published_decks(self):
+        public = Deck.objects.create(owner=self.other, title="Community", is_public=True)
+        Deck.objects.create(owner=self.other, title="Hidden", is_public=False)
+
+        response = self.client.get("/api/community/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([str(deck["share_token"]) for deck in response.data], [str(public.share_token)])
+
     @patch("decks.serializers.Card.objects.bulk_create", side_effect=IntegrityError("card insert failed"))
     def test_create_deck_rolls_back_if_cards_cannot_be_created(self, _bulk_create):
         self.authenticate()

@@ -30,9 +30,10 @@ class DeckSerializer(serializers.ModelSerializer):
         model = Deck
         fields = [
             "id", "title", "description", "folder", "tags", "emoji", "color",
+            "is_public", "share_token",
             "last_studied", "created_at", "updated_at", "due_count", "cards"
         ]
-        read_only_fields = ["last_studied", "created_at", "updated_at"]
+        read_only_fields = ["last_studied", "created_at", "updated_at", "is_public", "share_token"]
 
     @transaction.atomic
     def create(self, validated_data):
@@ -84,6 +85,22 @@ class StudyResultSerializer(serializers.Serializer):
                 raise serializers.ValidationError("Provide either 'grade' or 'correct'.")
             attrs["grade"] = 5 if attrs["correct"] else 2
         return attrs
+
+
+class SharingSerializer(serializers.Serializer):
+    is_public = serializers.BooleanField()
+
+
+class PublicDeckSerializer(serializers.ModelSerializer):
+    cards = CardSerializer(many=True, read_only=True)
+    author = serializers.CharField(source="owner.name", read_only=True)
+
+    class Meta:
+        model = Deck
+        fields = [
+            "title", "description", "folder", "tags", "emoji", "color",
+            "share_token", "author", "created_at", "cards",
+        ]
 
 
 

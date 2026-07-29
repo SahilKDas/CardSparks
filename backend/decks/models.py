@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -17,6 +19,10 @@ class Deck(models.Model):
     # Tags are intentionally embedded metadata: they are small, deck-owned,
     # and do not need the lifecycle or joins of a separate shared Tag model.
     tags = models.JSONField(default=list, blank=True)
+    is_public = models.BooleanField(default=False, db_index=True)
+    # UUID links are unguessable identifiers, not authorization by themselves:
+    # every public endpoint also checks is_public before returning the deck.
+    share_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     emoji = models.CharField(max_length=8, blank=True, default="✨")
     color = models.CharField(max_length=32, choices=Color.choices, default=Color.CORAL)
     last_studied = models.DateTimeField(null=True, blank=True)

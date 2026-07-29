@@ -2,6 +2,7 @@ from django.db.models import Max
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import APIView, action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
@@ -9,7 +10,7 @@ from django.db.models import F, Q, Count
 
 from .scheduling import apply_review, PASS_THRESHOLD
 from .models import Deck, Card, Review
-from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackSerializer
+from .serializers import DeckSerializer, CardSerializer, StudySessionSerializer, GenerateRequestSerializer, StudyFeedbackSerializer, PublicDeckSerializer, SharingSerializer
 from .generation import GenerationError, GenerationInputError, generate_cards, generate_feedback, generate_cards_from_notes
 from .stats import build_stats
 
@@ -31,6 +32,15 @@ class DeckViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="sharing")
+    def sharing(self, request, pk=None):
+        deck = self.get_object()
+        serializer = SharingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        deck.is_public = serializer.validated_data["is_public"]
+        deck.save(update_fields=["is_public", "updated_at"])
+        return Response(DeckSerializer(self.get_queryset().get(pk=deck.pk)).data)
 
     @action(detail=True, methods=["post"], url_path="study-sessions")
     def study_sessions(self, request, pk=None):
@@ -216,3 +226,58 @@ class StatsView(APIView):
             history_days=bounded("days", 365, 365),
             horizon_days=bounded("horizon", 30, 90)
         ))
+
+
+class CommunityDeckList(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        # Public discovery deliberately uses a separate serializer so adding an
+        # owner-only field to DeckSerializer can never leak it into this API.
+        decks = (Deck.objects.filter(is_public=True, owner__isnull=False)
+                 .select_related("owner").prefetch_related("cards")[:50])
+        return Response(PublicDeckSerializer(decks, many=True).data)
+
+
+class SharedDeckDetail(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            deck = (Deck.objects.filter(is_public=True, share_token=token, owner__isnull=False)
+                    .select_related("owner").prefetch_related("cards").get())
+        except Deck.DoesNotExist:
+            return Response({"detail": "Shared deck not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(PublicDeckSerializer(deck).data)
+
+
+class DuplicateSharedDeck(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, token):
+        try:
+            source = Deck.objects.prefetch_related("cards").get(
+                is_public=True,
+                share_token=token,
+                owner__isnull=False,
+            )
+        except Deck.DoesNotExist:
+            return Response({"detail": "Shared deck not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Copies never inherit publication state or scheduling history. Learners
+        # receive an independent study deck whose cards start fresh.
+        duplicate = Deck.objects.create(
+            owner=request.user,
+            title=f"{source.title} (Copy)"[:256],
+            description=source.description,
+            folder=source.folder,
+            tags=list(source.tags),
+            emoji=source.emoji,
+            color=source.color,
+        )
+        Card.objects.bulk_create([
+            Card(deck=duplicate, front=card.front, back=card.back, position=index)
+            for index, card in enumerate(source.cards.all())
+        ])
+        return Response(DeckSerializer(duplicate).data, status=status.HTTP_201_CREATED)

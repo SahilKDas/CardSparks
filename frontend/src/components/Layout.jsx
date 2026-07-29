@@ -50,6 +50,7 @@ export default function Layout() {
             {isAuthenticated ? <>
               <NavLink to="/decks" end><Icon name="grid" size={17} /> My decks</NavLink>
               <NavLink to="/stats"><Icon name="clock" size={17} /> Progress</NavLink>
+              <NavLink to="/community"><Icon name="sparkles" size={17} /> Community</NavLink>
               <NavLink to="/decks/new"><Icon name="plus" size={17} /> Create</NavLink>
             </> : <>
               <a href="/#how-it-works">How it works</a>
@@ -84,6 +85,7 @@ export default function Layout() {
       {isAuthenticated && <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavLink to="/decks" end><Icon name="grid" size={20} /><span>Decks</span></NavLink>
         <NavLink to="/stats"><Icon name="clock" size={20} /><span>Progress</span></NavLink>
+        <NavLink to="/community"><Icon name="sparkles" size={20} /><span>Community</span></NavLink>
         <NavLink to="/decks/new"><span className="mobile-create"><Icon name="plus" size={22} /></span><span>Create</span></NavLink>
         <button ref={mobileProfileButton} type="button" className={profileOpen ? 'active' : ''} onClick={() => setProfileOpen((value) => !value)}><span className="mobile-avatar">{initials}</span><span>Profile</span></button>
       </nav>}

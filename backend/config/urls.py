@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from decks.views import DeckViewSet, CardViewSet, StatsView
+from decks.views import CardViewSet, CommunityDeckList, DeckViewSet, DuplicateSharedDeck, SharedDeckDetail, StatsView
 
 router = DefaultRouter()
 router.register(r"decks", DeckViewSet, basename="deck")
@@ -27,5 +27,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/stats/", StatsView.as_view(), name="stats"),
+    path("api/community/", CommunityDeckList.as_view(), name="community-decks"),
+    path("api/shared-decks/<uuid:token>/", SharedDeckDetail.as_view(), name="shared-deck"),
+    path("api/shared-decks/<uuid:token>/duplicate/", DuplicateSharedDeck.as_view(), name="duplicate-shared-deck"),
     path("api/", include(router.urls))
 ]
