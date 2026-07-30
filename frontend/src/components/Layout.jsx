@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/useApp'
 import { Icon } from './Icons'
+import LofiPlayer from './LofiPlayer'
 
 function Logo({ destination }) {
   return (
@@ -83,6 +84,10 @@ export default function Layout() {
       </header>
 
       <main><Outlet /></main>
+
+      {/* The player lives in the shared layout so music continues uninterrupted
+          while React Router swaps pages beneath it. */}
+      <LofiPlayer />
 
       {isAuthenticated && <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavLink to="/decks" end><Icon name="grid" size={20} /><span>Decks</span></NavLink>

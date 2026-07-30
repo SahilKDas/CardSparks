@@ -84,6 +84,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .profile-menu-link:hover { color: var(--text); background: var(--surface-soft); }
 .mobile-nav { display: none; }
 
+/* Persistent lo-fi player */
+.lofi-player { position: fixed; left: 20px; bottom: 20px; z-index: 44; }
+.lofi-player audio { display: none; }
+.lofi-button {
+  min-width: 142px;
+  min-height: 48px;
+  padding: 7px 9px 7px 11px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(53, 45, 34, .14);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.lofi-button:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: 0 13px 34px rgba(53, 45, 34, .18); }
+.lofi-button[aria-pressed='true'] { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.lofi-bars { width: 31px; height: 31px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 2px; color: var(--primary); background: var(--primary-soft); border-radius: 10px; }
+.lofi-bars i { width: 3px; height: 8px; display: block; background: currentColor; border-radius: 99px; transform-origin: center; }
+.lofi-bars i:nth-child(2) { height: 14px; }
+.lofi-bars i:nth-child(3) { height: 10px; }
+.lofi-bars.is-playing i { animation: lofiPulse .8s ease-in-out infinite alternate; }
+.lofi-bars.is-playing i:nth-child(2) { animation-delay: -.45s; }
+.lofi-bars.is-playing i:nth-child(3) { animation-delay: -.2s; }
+.lofi-copy { min-width: 52px; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.lofi-copy strong { font-size: 11px; line-height: 1.15; }
+.lofi-copy small { max-width: 82px; overflow: hidden; color: var(--subtle); font-size: 8px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.lofi-toggle-icon { width: 25px; height: 25px; margin-left: auto; display: flex; align-items: center; justify-content: center; gap: 3px; color: white; background: var(--primary); border-radius: 50%; }
+.lofi-toggle-icon > i { width: 3px; height: 10px; display: block; background: currentColor; border-radius: 2px; }
+.lofi-player.has-error .lofi-bars, .lofi-player.has-error .lofi-toggle-icon { color: var(--red); }
+.lofi-player.has-error .lofi-toggle-icon { color: white; background: var(--red); }
+@keyframes lofiPulse { from { transform: scaleY(.55); } to { transform: scaleY(1.15); } }
+
 .page { width: min(1154px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 80px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
@@ -496,6 +533,12 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
   .mobile-create { width: 36px; height: 36px; margin-top: -21px; display: grid; place-items: center; color: white; background: var(--primary); border: 4px solid var(--surface); border-radius: 12px; box-sizing: content-box; box-shadow: 0 5px 15px rgba(242,107,77,.25); }
   .mobile-avatar { width: 24px; height: 24px; display: grid; place-items: center; color: #604d42; background: #e7d8cd; border-radius: 50%; font-size: 8px; font-weight: 700; }
   main { padding-bottom: 66px; }
+  .lofi-player { left: 12px; bottom: 12px; }
+  .authenticated .lofi-player { bottom: 78px; }
+  .lofi-button { min-width: 0; min-height: 44px; padding: 6px 8px; border-radius: 14px; }
+  .lofi-bars { width: 30px; height: 30px; }
+  .lofi-copy { display: none; }
+  .lofi-toggle-icon { width: 24px; height: 24px; }
   .page { width: min(100% - 30px, 1154px); padding-top: 35px; }
   .dashboard-hero { align-items: flex-start; }
   .dashboard-hero h1 { font-size: 34px; letter-spacing: -1.4px; }
