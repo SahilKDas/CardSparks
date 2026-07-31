@@ -81,6 +81,7 @@ export default function Dashboard() {
             <span className="today-complete"><Icon name="check" size={18} /> All caught up</span>
           )}
           {today.perDeck[0] && <small>Starting with {today.perDeck[0].title} · {today.perDeck[0].total} cards</small>}
+          <Link className="today-rescue-link" to="/practice/rescue"><Icon name="clock" size={14} /> Build a time-boxed rescue</Link>
         </div>
       </section>
 

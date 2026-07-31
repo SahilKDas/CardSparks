@@ -989,3 +989,58 @@ kbd { min-width: 21px; height: 18px; margin-right: 4px; padding: 0 4px; display:
 .settings-card { padding: 25px; display: grid; gap: 21px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-sm); }
 .settings-actions { padding-top: 17px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--border); }
 .settings-actions span { color: var(--green); font-size: 9px; }
+
+/* Time-boxed cross-deck rescue */
+.today-rescue-link { margin-top: 7px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 700; }
+.today-rescue-link:hover { color: var(--primary); }
+.stats-page-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.rescue-page { max-width: 900px; }
+.rescue-setup { display: grid; gap: 18px; }
+.rescue-budget { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.rescue-budget button { min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 15px; cursor: pointer; transition: .18s ease; }
+.rescue-budget button:hover, .rescue-budget button.selected { color: var(--primary); border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); transform: translateY(-2px); }
+.rescue-budget strong { font-size: 28px; letter-spacing: -1px; }
+.rescue-budget span { font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.rescue-preview { padding: 24px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; background: linear-gradient(130deg, var(--surface), var(--surface-warm)); border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); border-radius: 18px; box-shadow: var(--shadow-sm); }
+.rescue-preview-icon { width: 52px; height: 52px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); border-radius: 15px; }
+.rescue-preview h2 { margin: 5px 0 8px; font-size: 20px; }
+.rescue-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+.rescue-reasons span { padding: 4px 8px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; font-size: 8px; font-weight: 700; }
+.rescue-complete { width: min(900px, calc(100% - 24px)); max-width: 900px; }
+
+/* Aggregate-only study result card */
+.share-result-card { margin: 24px 0; padding: 18px; display: grid; grid-template-columns: minmax(260px, .9fr) 1.1fr; gap: 22px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-sm); text-align: left; }
+.share-result-preview { min-height: 220px; padding: 20px; position: relative; display: grid; grid-template-columns: 1fr auto; align-content: start; overflow: hidden; background: linear-gradient(135deg, var(--surface-warm), color-mix(in srgb, var(--violet) 9%, var(--surface))); border: 1px solid var(--border); border-radius: 14px; }
+.share-result-preview::after { content: ''; width: 140px; height: 140px; position: absolute; right: -55px; bottom: -70px; background: var(--primary); border-radius: 50%; opacity: .08; }
+.share-result-brand { display: inline-flex; align-items: center; gap: 5px; color: var(--primary); font-size: 10px; font-weight: 800; }
+.share-result-preview > small { justify-self: end; color: var(--subtle); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.share-result-preview > strong { margin: 22px 0 8px; grid-column: 1 / -1; font-size: 56px; letter-spacing: -3px; }
+.share-result-preview > div { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; }
+.share-result-preview > div b { font-size: 13px; }
+.share-result-preview > div span { color: var(--muted); font-size: 9px; }
+.share-result-preview > p { margin: 20px 0 0; padding-top: 12px; grid-column: 1 / -1; color: var(--muted); border-top: 1px solid var(--border); font-size: 8px; line-height: 1.5; }
+.share-result-copy h2 { margin: 7px 0; font-size: 20px; }
+.share-result-copy > p { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.share-result-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.share-result-status { min-height: 14px; margin-top: 8px; display: block; color: var(--green); font-size: 8px; }
+
+/* Exam misconception analysis */
+.misconception-summary { margin: 22px 0; padding: 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 15px; align-items: center; background: color-mix(in srgb, var(--violet) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--violet) 25%, var(--border)); border-radius: 16px; }
+.misconception-icon { width: 45px; height: 45px; display: grid; place-items: center; color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, var(--surface)); border-radius: 13px; }
+.misconception-summary h2 { margin: 5px 0; font-size: 16px; }
+.misconception-summary p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
+.misconception-summary blockquote { margin: 10px 0 0; padding: 10px 12px; color: var(--text); background: var(--surface); border-left: 3px solid var(--violet); border-radius: 0 9px 9px 0; font-size: 10px; line-height: 1.6; }
+.misconception-detail { margin-top: 13px; padding: 13px; display: grid; gap: 7px; background: color-mix(in srgb, var(--violet) 7%, var(--surface)); border-radius: 10px; }
+.misconception-detail > span { color: var(--violet); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.misconception-detail > p, .misconception-detail > strong { margin: 0; font-size: 9px; line-height: 1.55; }
+.misconception-detail > p { color: var(--muted); }
+.misconception-detail .text-button { width: fit-content; margin-top: 3px; color: var(--violet); font-weight: 700; }
+
+@media (max-width: 720px) {
+  .stats-page-head { align-items: stretch; flex-direction: column; }
+  .rescue-budget { grid-template-columns: 1fr 1fr; }
+  .rescue-preview, .misconception-summary { grid-template-columns: 1fr; }
+  .rescue-preview .button, .misconception-summary .button { width: 100%; }
+  .share-result-card { grid-template-columns: 1fr; }
+  .share-result-actions .button { flex: 1; }
+}

@@ -190,9 +190,9 @@ export default function Stats() {
 
   return (
     <div className="page">
-      <header className="page-head">
+      <header className="page-head stats-page-head">
         <div><h1>Your progress</h1><p>Retention, streaks, and what’s coming up.</p></div>
-        <Link className="button button-primary" to="/practice/weak"><Icon name="play" size={17} /> Practice weak cards</Link>
+        <div className="hero-actions"><Link className="button button-secondary" to="/practice/rescue"><Icon name="clock" size={17} /> Study rescue</Link><Link className="button button-primary" to="/practice/weak"><Icon name="play" size={17} /> Practice weak cards</Link></div>
       </header>
 
       <div className="stat-tiles">

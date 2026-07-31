@@ -43,3 +43,60 @@ export function scoreExam(questions, answers) {
     return { ...question, selected, correctIndex, correct: selected === correctIndex }
   })
 }
+
+const COMMON_WORDS = new Set(['about', 'after', 'also', 'answer', 'because', 'before', 'being', 'from', 'into', 'other', 'that', 'their', 'there', 'these', 'this', 'through', 'what', 'when', 'where', 'which', 'with'])
+
+function conceptWords(value) {
+  return String(value || '').toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => word.length > 2 && !COMMON_WORDS.has(word)) || []
+}
+
+function shorten(value, limit) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length <= limit ? text : `${text.slice(0, Math.max(1, limit - 1)).trimEnd()}…`
+}
+
+/**
+ * Produce a deterministic first-pass diagnosis while the optional AI summary
+ * loads independently. The wording is deliberately tentative: an incorrect
+ * multiple-choice answer can suggest a misconception, but cannot prove one.
+ */
+export function analyzeMisconception(result) {
+  if (!result || result.correct) return null
+  const correctAnswer = result.options?.[result.correctIndex]?.text || 'the correct answer'
+  const selectedAnswer = Number.isInteger(result.selected) ? result.options?.[result.selected]?.text : ''
+  const correctWords = new Set(conceptWords(correctAnswer))
+  const overlap = conceptWords(selectedAnswer).filter((word) => correctWords.has(word))
+  let title = 'Recall gap'
+  let explanation = `This concept was left unanswered. Reconnect the prompt with “${shorten(correctAnswer, 140)}.”`
+
+  if (selectedAnswer) {
+    title = overlap.length ? 'Boundary confusion' : 'Concept association'
+    explanation = overlap.length
+      ? `The two answers share language around ${overlap.slice(0, 3).join(', ')}, so their boundaries may be blending together.`
+      : `You may be associating this prompt with “${shorten(selectedAnswer, 110)}” instead of the target concept.`
+  }
+
+  const prompt = shorten(result.prompt, 180)
+  const correction = `For “${prompt}”, anchor your recall to “${shorten(correctAnswer, 180)}.”`
+  const followUpFront = selectedAnswer
+    ? shorten(`How can you distinguish “${selectedAnswer}” from the correct answer to “${prompt}”?`, 300)
+    : shorten(`What is the best answer to “${prompt}”?`, 300)
+  const followUpBack = selectedAnswer
+    ? shorten(`The correct answer is “${correctAnswer}”. “${selectedAnswer}” is a distractor in this context.`, 600)
+    : shorten(correctAnswer, 600)
+
+  return {
+    title,
+    explanation,
+    correction,
+    followUpCard: {
+      front: followUpFront,
+      back: followUpBack,
+      mastery: 0,
+      cardType: 'basic',
+      choices: [],
+      correctIndex: null,
+      imageUrl: '',
+    },
+  }
+}

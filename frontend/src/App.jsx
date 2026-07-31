@@ -17,6 +17,7 @@ import Exam from './pages/Exam'
 import QualityCheck from './pages/QualityCheck'
 import BulkEditor from './pages/BulkEditor'
 import TransferCenter from './pages/TransferCenter'
+import StudyRescue from './pages/StudyRescue'
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="decks/:deckId/exam" element={<Exam />} />
           <Route path="decks/:deckId/quality" element={<QualityCheck />} />
           <Route path="practice/weak" element={<WeakPractice />} />
+          <Route path="practice/rescue" element={<StudyRescue />} />
           <Route path="bulk" element={<BulkEditor />} />
           <Route path="transfer" element={<TransferCenter />} />
         </Route>
