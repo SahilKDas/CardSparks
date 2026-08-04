@@ -1,6 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APITestCase
+from io import StringIO
+
+from decks.models import Deck, Review
 
 
 User = get_user_model()
@@ -51,3 +55,41 @@ class AuthenticationTests(APITestCase):
                 password="safe-password-123",
                 is_staff=False,
             )
+
+    def test_demo_seed_creates_login_ready_history_and_resets_only_demo_user(self):
+        other = User.objects.create_user(name="Existing Learner", email="existing@example.com", password="safe-password-123")
+        Deck.objects.create(owner=other, title="Keep me")
+        output = StringIO()
+
+        call_command(
+            "seed_demo_account",
+            email="demo@cardsparks.app",
+            password="SparkDemo!2026",
+            name="Demo Learner",
+            stdout=output,
+        )
+
+        demo = User.objects.get(email="demo@cardsparks.app")
+        self.assertTrue(demo.check_password("SparkDemo!2026"))
+        self.assertEqual(demo.decks.count(), 3)
+        self.assertEqual(sum(deck.cards.count() for deck in demo.decks.all()), 16)
+        self.assertGreater(Review.objects.filter(card__deck__owner=demo).count(), 0)
+        self.assertEqual(demo.study_settings.max_reviews, 80)
+
+        Deck.objects.create(owner=demo, title="Temporary judge edit")
+        call_command(
+            "seed_demo_account",
+            email="demo@cardsparks.app",
+            password="SparkDemo!2026",
+            name="Demo Learner",
+            stdout=StringIO(),
+        )
+
+        self.assertEqual(demo.decks.count(), 3)
+        self.assertTrue(Deck.objects.filter(owner=other, title="Keep me").exists())
+
+        response = self.client.post("/api/auth/login/", {
+            "email": "demo@cardsparks.app",
+            "password": "SparkDemo!2026",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

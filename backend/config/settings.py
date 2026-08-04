@@ -36,8 +36,19 @@ def env_list(name, default):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-# SECURITY WARNING: don't run with debug turned on in production.
-DEBUG = env_bool("DJANGO_DEBUG", True)
+def env_int(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as error:
+        raise ImproperlyConfigured(f"{name} must be an integer.") from error
+
+
+# Production is the safe default. Local development can explicitly opt into
+# detailed error pages with DJANGO_DEBUG=true.
+DEBUG = env_bool("DJANGO_DEBUG", False)
 
 # Local development works without a private .env file, but production fails
 # closed instead of silently running with a known key.
@@ -55,6 +66,25 @@ CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ])
+
+# Cookie-backed admin/session requests need an explicit HTTPS frontend origin
+# in production. Token-authenticated API requests continue to use CORS above.
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", [])
+
+# Hosts that terminate TLS before forwarding to Django can opt into the
+# conventional X-Forwarded-Proto header. This remains disabled unless the
+# deployment controls and sanitizes that header.
+if env_bool("DJANGO_TRUST_X_FORWARDED_PROTO", False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", not DEBUG)
+SECURE_HSTS_SECONDS = env_int("DJANGO_SECURE_HSTS_SECONDS", 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
 
 
 # Application definition
@@ -161,3 +191,4 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
